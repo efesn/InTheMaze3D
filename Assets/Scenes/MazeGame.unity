@@ -119,6 +119,63 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &196131239
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 196131241}
+  - component: {fileID: 196131240}
+  m_Layer: 0
+  m_Name: PlayerToken
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &196131240
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 196131239}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64ee6082ca91f0d4bb36cba3ac5d5ecf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerToken
+  mazeBoardGenerator: {fileID: 1579266071}
+  mazeWallsGenerator: {fileID: 439482214}
+  findGeneratorsAutomatically: 1
+  sphereDiameter: 0.6
+  sphereColor: {r: 1, g: 1, b: 1, a: 1}
+  generatedTokenName: Player Token
+  movementSpeed: 4
+  fixedYCoordinate: 0.6
+  useArrowKeys: 1
+  bounciness: 0.9
+  dynamicFriction: 0.2
+  staticFriction: 0.2
+  mass: 1
+--- !u!4 &196131241
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 196131239}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -4.77786, y: 0, z: -4.57134}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -205,13 +262,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.100002885, y: -0, z: -0, w: 0.99498713}
-  m_LocalPosition: {x: 0, y: 6.14, z: -13.91}
+  m_LocalRotation: {x: 0.5216128, y: 0, z: 0, w: 0.8531824}
+  m_LocalPosition: {x: 0, y: 10.49, z: -6.24}
   m_LocalScale: {x: 1, y: 1.4422, z: 0.92777}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 11.479, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 62.881, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -561,3 +618,4 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 1579266072}
   - {fileID: 439482215}
+  - {fileID: 196131241}
