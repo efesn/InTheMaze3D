@@ -652,7 +652,6 @@ MonoBehaviour:
   disablePlayerInputUntilPlaying: 1
   showTimerWhileWaiting: 1
   timerPrefix: 
-  readyMessage: Press Space to start
   waitingMessage: Waiting for maze...
   finishMessagePrefix: 'Finished: '
   finishTriggerObject: {fileID: 0}
@@ -777,6 +776,413 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1592151877
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1592151879}
+  - component: {fileID: 1592151878}
+  m_Layer: 0
+  m_Name: MazeAudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1592151878
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1592151877}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbb86961ae1d45b45b14ebd2876bf009, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MazeAudioManager
+  gameSystem: {fileID: 0}
+  playerToken: {fileID: 0}
+  playerTarget: {fileID: 0}
+  autoFindReferences: 1
+  startSound: {fileID: 0}
+  wallBounceSound: {fileID: 0}
+  finishSound: {fileID: 0}
+  restartSound: {fileID: 0}
+  backgroundMusic: {fileID: 0}
+  generateFallbackSounds: 1
+  proceduralSampleRate: 44100
+  proceduralToneVolume: 0.8
+  proceduralMusicVolumeScale: 0.45
+  effectsSource: {fileID: 0}
+  bounceSource: {fileID: 0}
+  musicSource: {fileID: 0}
+  createSourcesIfMissing: 1
+  masterVolume: 1
+  effectsVolume: 0.85
+  bounceVolume: 0.75
+  musicVolume: 0.35
+  muteAll: 0
+  muteEffects: 0
+  muteBounce: 0
+  muteMusic: 0
+  playMusicOnStart: 1
+  loopMusic: 1
+  stopMusicOnFinish: 0
+  musicFadeInSeconds: 0.75
+  musicFadeOutSeconds: 0.5
+  enableWallBounceSound: 1
+  minimumBounceRelativeVelocity: 0.8
+  bounceSoundCooldown: 0.12
+  wallObjectNameContains: Wall
+  wallTag: 
+  attachCollisionRelayToPlayer: 1
+  printStatusMessages: 0
+  printWarnings: 0
+  status: not ready
+--- !u!4 &1592151879
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1592151877}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -4.20608, y: 3.92492, z: 2.86715}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1633563948
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1633563950}
+  - component: {fileID: 1633563949}
+  m_Layer: 0
+  m_Name: MazeDifficultySettings
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1633563949
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1633563948}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22098512502064e4fa4481c7db984834, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MazeDifficultySettings
+  selectedDifficulty: 2
+  applySelectedPresetOnStart: 1
+  logAppliedDifficulty: 1
+  easyPreset:
+    presetName: Easy
+    description: Smaller, simpler maze with fewer branches and a relaxed timer.
+    columns: 10
+    rows: 8
+    waypointCount: 3
+    falsePathCount: 2
+    targetPathCoverage: 0.28
+    falsePathMinLength: 2
+    falsePathMaxLength: 5
+    removeNonCriticalWalls: 0
+    wallRemovalPercentage: 0
+    playerSpeed: 3.5
+    playerAcceleration: 22
+    playerDrag: 1.8
+    timerMode: 0
+    timeLimitSeconds: 240
+    startAutomatically: 0
+    allowRestart: 1
+    scoreTimePenaltyPerSecond: 25
+    scoreRouteInefficiencyPenalty: 1600
+  normalPreset:
+    presetName: Normal
+    description: Balanced default maze for the intended project experience.
+    columns: 14
+    rows: 12
+    waypointCount: 5
+    falsePathCount: 5
+    targetPathCoverage: 0.42
+    falsePathMinLength: 3
+    falsePathMaxLength: 9
+    removeNonCriticalWalls: 0
+    wallRemovalPercentage: 0
+    playerSpeed: 4
+    playerAcceleration: 24
+    playerDrag: 1.5
+    timerMode: 0
+    timeLimitSeconds: 180
+    startAutomatically: 0
+    allowRestart: 1
+    scoreTimePenaltyPerSecond: 35
+    scoreRouteInefficiencyPenalty: 2500
+  hardPreset:
+    presetName: Hard
+    description: Larger and denser maze with more misleading branches and stricter
+      scoring.
+    columns: 18
+    rows: 14
+    waypointCount: 8
+    falsePathCount: 9
+    targetPathCoverage: 0.58
+    falsePathMinLength: 5
+    falsePathMaxLength: 13
+    removeNonCriticalWalls: 0
+    wallRemovalPercentage: 0
+    playerSpeed: 4.4
+    playerAcceleration: 28
+    playerDrag: 1.25
+    timerMode: 0
+    timeLimitSeconds: 120
+    startAutomatically: 0
+    allowRestart: 1
+    scoreTimePenaltyPerSecond: 50
+    scoreRouteInefficiencyPenalty: 3600
+  status: difficulty applied
+  activePresetName: Hard
+  activeColumns: 18
+  activeRows: 14
+  activeWaypointCount: 8
+  activeFalsePathCount: 9
+  activeTargetPathCoverage: 0.58
+  activeFalsePathMinLength: 5
+  activeFalsePathMaxLength: 13
+  activeRemoveNonCriticalWalls: 0
+  activeWallRemovalPercentage: 0
+  activePlayerSpeed: 4.4
+  activePlayerAcceleration: 28
+  activePlayerDrag: 1.25
+  activeTimerMode: 0
+  activeTimeLimitSeconds: 120
+  activeStartAutomatically: 0
+  activeAllowRestart: 1
+  activeScoreTimePenaltyPerSecond: 50
+  activeScoreRouteInefficiencyPenalty: 3600
+--- !u!4 &1633563950
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1633563948}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -4.20608, y: 3.92492, z: 2.86715}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2006740122
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2006740124}
+  - component: {fileID: 2006740123}
+  m_Layer: 0
+  m_Name: Main Menu Manager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2006740123
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2006740122}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0629261eff0776b4d948e451ac562b2a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MainMenuManager
+  gameSystem: {fileID: 0}
+  autoFindGameSystem: 1
+  showMenuOnStart: 1
+  forceGameSystemManualStart: 1
+  reloadActiveSceneIfNoGameSystem: 0
+  optionalMazeSceneName: 
+  gameSystemWaitInterval: 0.15
+  gameSystemStartTimeout: 10
+  showFinishScreenWhenGameEnds: 1
+  finishTitle: Maze Completed
+  finishMessage: You reached the exit.
+  finishTimePrefix: 'Completion Time: '
+  createUiIfMissing: 1
+  canvasObjectName: Main Menu Canvas
+  menuPanelObjectName: Main Menu Panel
+  instructionsPanelObjectName: Instructions Panel
+  finishPanelObjectName: Finish Panel
+  sortingOrder: 1000
+  menuCanvas: {fileID: 0}
+  menuPanel: {fileID: 0}
+  instructionsPanel: {fileID: 0}
+  finishPanel: {fileID: 0}
+  startGameButton: {fileID: 0}
+  restartButton: {fileID: 0}
+  instructionsButton: {fileID: 0}
+  quitButton: {fileID: 0}
+  closeInstructionsButton: {fileID: 0}
+  finishRestartButton: {fileID: 0}
+  finishQuitButton: {fileID: 0}
+  titleText: {fileID: 0}
+  instructionsText: {fileID: 0}
+  statusText: {fileID: 0}
+  finishTitleText: {fileID: 0}
+  finishMessageText: {fileID: 0}
+  finishTimeText: {fileID: 0}
+  gameTitle: In the Maze
+  startButtonLabel: Start Game
+  restartButtonLabel: Restart
+  instructionsButtonLabel: Instructions
+  quitButtonLabel: Quit
+  closeInstructionsButtonLabel: Back
+  instructionsMessage: Use the arrow keys to move the white token through the maze.
+    Find the exit on the right side of the board and try to reach it by the shortest
+    route.
+  backgroundColor: {r: 0.04, g: 0.06, b: 0.08, a: 0.86}
+  panelColor: {r: 0.1, g: 0.12, b: 0.16, a: 0.94}
+  titleColor: {r: 1, g: 1, b: 1, a: 1}
+  bodyTextColor: {r: 0.92, g: 0.95, b: 1, a: 1}
+  successColor: {r: 0.55, g: 1, b: 0.45, a: 1}
+  buttonNormalColor: {r: 0.95, g: 0.95, b: 0.95, a: 1}
+  buttonHighlightedColor: {r: 1, g: 0.86, b: 0.22, a: 1}
+  buttonPressedColor: {r: 0.95, g: 0.25, b: 0.25, a: 1}
+  buttonTextColor: {r: 0.05, g: 0.06, b: 0.08, a: 1}
+  titleFontSize: 52
+  buttonFontSize: 24
+  bodyFontSize: 22
+  printDebugMessages: 1
+  status: main menu
+--- !u!4 &2006740124
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2006740122}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -6.83379, y: 0, z: 3.8259}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2120517539
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2120517540}
+  - component: {fileID: 2120517541}
+  m_Layer: 0
+  m_Name: MazeScoreSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2120517540
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2120517539}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -4.20608, y: 3.92492, z: 2.86715}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2120517541
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2120517539}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 19d0d485d1a306b48a8162442ce09cc6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MazeScoreSystem
+  boardGenerator: {fileID: 0}
+  combinedMazeGenerator: {fileID: 0}
+  gameSystem: {fileID: 0}
+  playerToken: {fileID: 0}
+  playerTarget: {fileID: 0}
+  autoFindReferences: 1
+  calculateOnStart: 1
+  recalculateWhenMazeChanges: 1
+  readinessRetryInterval: 0.2
+  readinessTimeout: 12
+  playerDistanceSampleInterval: 0.05
+  minimumMovementSampleDistance: 0.01
+  baseScore: 10000
+  timePenaltyPerSecond: 35
+  routeInefficiencyPenalty: 2500
+  minimumScore: 0
+  expectedSecondsPerOptimalStep: 1
+  clampEfficiencyToOne: 1
+  scoreTextTarget: {fileID: 0}
+  detailsTextTarget: {fileID: 0}
+  useOnGUIFallback: 1
+  onGuiScoreRect:
+    serializedVersion: 2
+    x: 16
+    y: 104
+    width: 520
+    height: 42
+  onGuiDetailsRect:
+    serializedVersion: 2
+    x: 16
+    y: 146
+    width: 720
+    height: 90
+  onGuiFontSize: 22
+  onGuiTextColor: {r: 1, g: 1, b: 1, a: 1}
+  showScoreOnlyAfterFinish: 1
+  scorePrefix: 'Score: '
+  detailsPrefix: 'Route Efficiency: '
+  printStatusMessages: 1
+  printWarnings: 1
+  status: not ready
+  optimalRouteSteps: -1
+  optimalRouteWorldDistance: 0
+  playerTravelDistance: 0
+  finalScore: 0
+  finalRouteEfficiency: 0
+  finalCompletionTime: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -788,3 +1194,7 @@ SceneRoots:
   - {fileID: 439482215}
   - {fileID: 196131241}
   - {fileID: 1131625400}
+  - {fileID: 2006740124}
+  - {fileID: 2120517540}
+  - {fileID: 1592151879}
+  - {fileID: 1633563950}

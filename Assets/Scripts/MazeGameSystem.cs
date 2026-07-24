@@ -33,7 +33,6 @@ public class MazeGameSystem : MonoBehaviour
     [Header("Timer Settings")]
     [SerializeField] private bool showTimerWhileWaiting = true;
     [SerializeField] private string timerPrefix = "";
-    [SerializeField] private string readyMessage = "Press Space to start";
     [SerializeField] private string waitingMessage = "Waiting for maze...";
     [SerializeField] private string finishMessagePrefix = "Finished: ";
 
@@ -256,7 +255,6 @@ public class MazeGameSystem : MonoBehaviour
         hasCachedExitWorldPosition = TryResolveExitWorldPosition(out cachedExitWorldPosition);
 
         SetState(MazeGameState.ReadyToStart);
-        currentMessage = startAutomatically ? "" : readyMessage;
         ApplyPlayerInputAvailability();
         UpdateTimerDisplay();
         UpdateMessageDisplay(currentMessage);
