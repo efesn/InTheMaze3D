@@ -612,8 +612,8 @@ MonoBehaviour:
   markerHeight: 0.12
   markerSize: 0.7
   finishDetectionRadius: 0.55
-  startColor: {r: 0, g: 0, b: 1, a: 1}
-  finishColor: {r: 0, g: 0, b: 0, a: 1}
+  startColor: {r: 0.254717, g: 0.254717, b: 0.254717, a: 1}
+  finishColor: {r: 0, g: 0.0323627, b: 1, a: 1}
   startTimerAutomatically: 1
   showTimerOnScreen: 1
   timerFontSize: 28
