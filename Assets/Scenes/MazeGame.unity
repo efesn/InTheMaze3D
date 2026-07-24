@@ -148,19 +148,42 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 64ee6082ca91f0d4bb36cba3ac5d5ecf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerToken
-  mazeBoardGenerator: {fileID: 1579266071}
-  mazeWallsGenerator: {fileID: 439482214}
-  findGeneratorsAutomatically: 1
-  sphereDiameter: 0.6
-  sphereColor: {r: 1, g: 1, b: 1, a: 1}
-  generatedTokenName: Player Token
+  boardSource: {fileID: 0}
+  wallsSource: {fileID: 0}
+  autoFindBoardSource: 1
+  autoFindWallsSource: 1
+  createOnStart: 1
+  tokenObjectName: Player Token
+  tokenDiameter: 0.6
+  tokenCenterY: 0.6
+  upKey: 273
+  downKey: 274
+  leftKey: 276
+  rightKey: 275
+  inputEnabled: 1
+  movementMode: 0
   movementSpeed: 4
-  fixedYCoordinate: 0.6
-  useArrowKeys: 1
+  acceleration: 24
+  normalizeDiagonalInput: 1
+  linearDamping: 1.5
+  angularDamping: 4
   bounciness: 0.9
   dynamicFriction: 0.2
   staticFriction: 0.2
-  mass: 1
+  frictionCombine: 0
+  bounceCombine: 3
+  collisionDetectionMode: 2
+  interpolation: 1
+  freezeRotation: 1
+  tokenTexture: {fileID: 0}
+  generateFallbackCircleTexture: 1
+  generatedTextureSize: 256
+  tokenBaseColor: {r: 1, g: 1, b: 1, a: 1}
+  circlePatternColor: {r: 0, g: 0, b: 0, a: 1}
+  circleLineWidth: 0.018
+  circleRadius: 0.32
+  smoothness: 0.35
+  status: not generated
 --- !u!4 &196131241
 Transform:
   m_ObjectHideFlags: 0
@@ -263,13 +286,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.5216128, y: 0, z: 0, w: 0.8531824}
-  m_LocalPosition: {x: 0, y: 10.49, z: -6.24}
-  m_LocalScale: {x: 1, y: 1.4422, z: 0.92777}
+  m_LocalRotation: {x: 0.60566884, y: -0, z: -0, w: 0.7957169}
+  m_LocalPosition: {x: -4.76, y: 20.01, z: 11.2}
+  m_LocalScale: {x: 1, y: 1.4422, z: 1.175299}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 62.881, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 74.554, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -328,17 +351,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCamera
   playerTarget: {fileID: 0}
   findPlayerAutomatically: 1
-  playerObjectName: Player Token
+  targetSearchTimeout: 8
+  targetSearchInterval: 0.15
   followOffset: {x: 0, y: 7, z: -7}
-  lookAtPlayer: 1
   lookAtHeight: 0.4
   smoothFollow: 1
   followSmoothTime: 0.15
-  rotationSpeed: 8
-  setCameraDefaultsOnStart: 1
+  rotationSmoothing: 1
+  rotationSmoothTime: 0.12
   fieldOfView: 60
   nearClipPlane: 0.3
   farClipPlane: 1000
+  status: not ready
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -495,22 +519,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0e55a443aebdae94d9db2f7fa324465f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MazeWallsGenerator
-  mazeBoardGenerator: {fileID: 1579266071}
-  findBoardGeneratorAutomatically: 1
-  boardReadyWaitTime: 3
+  boardSource: {fileID: 0}
+  autoFindBoardSource: 1
+  boardReadyRetryCount: 10
+  boardReadyRetryDelaySeconds: 0.15
   generateOnStart: 1
-  removeRandomWalls: 1
-  wallRemovalPercent: 0.2
-  randomSeed: 0
-  useRandomSeed: 1
-  generatedRootName: Generated Maze Walls
-  cellSize: 1
+  removeNonCriticalWalls: 0
+  maxNonCriticalWallRemovalRatio: 0.2
+  randomizeWallSeed: 1
+  wallRandomSeed: 24680
   wallWidth: 0.2
   wallHeight: 1.2
-  wallVerticalOffset: 0
+  boardSurfaceY: 0
+  generatedParentName: Generated Maze Walls
+  collidersEnabled: 1
   bounciness: 0.9
   dynamicFriction: 0.2
   staticFriction: 0.2
+  frictionCombine: 0
+  bounceCombine: 3
+  yellowWallColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  azureWallColor: {r: 0, g: 0.65, b: 1, a: 1}
+  magentaWallColor: {r: 1, g: 0, b: 1, a: 1}
+  limeWallColor: {r: 0.45, g: 1, b: 0, a: 1}
+  violetWallColor: {r: 0.55, g: 0, b: 1, a: 1}
+  pinkWallColor: {r: 1, g: 0.4, b: 0.75, a: 1}
+  greenWallColor: {r: 0, g: 1, b: 0, a: 1}
+  status: not generated
 --- !u!4 &439482215
 Transform:
   m_ObjectHideFlags: 0
@@ -604,21 +639,55 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5151454cb7b53e6408f783476b4f304f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MazeGameSystem
-  mazeBoardGenerator: {fileID: 1579266071}
+  boardGenerator: {fileID: 0}
+  wallsGenerator: {fileID: 0}
   playerToken: {fileID: 196131240}
-  findObjectsAutomatically: 1
-  setupWaitTime: 5
-  playerObjectName: Player Token
-  markerHeight: 0.12
-  markerSize: 0.7
+  playerCamera: {fileID: 0}
+  combinedMazeGenerator: {fileID: 0}
+  autoFindReferences: 1
+  startAutomatically: 1
+  manualStartKey: 32
+  readinessCheckInterval: 0.15
+  startupTimeoutSeconds: 15
+  disablePlayerInputUntilPlaying: 1
+  showTimerWhileWaiting: 1
+  timerPrefix: 
+  readyMessage: Press Space to start
+  waitingMessage: Waiting for maze...
+  finishMessagePrefix: 'Finished: '
+  finishTriggerObject: {fileID: 0}
   finishDetectionRadius: 0.55
-  startColor: {r: 0.254717, g: 0.254717, b: 0.254717, a: 1}
-  finishColor: {r: 0, g: 0.0323627, b: 1, a: 1}
-  startTimerAutomatically: 1
-  showTimerOnScreen: 1
-  timerFontSize: 28
-  timerTextColor: {r: 1, g: 1, b: 1, a: 1}
-  generatedRootName: Generated Game System
+  allowMovementAfterFinish: 0
+  useHorizontalDistanceOnly: 1
+  timerTextTarget: {fileID: 0}
+  messageTextTarget: {fileID: 0}
+  useOnGUIFallback: 1
+  onGuiTimerRect:
+    serializedVersion: 2
+    x: 16
+    y: 16
+    width: 260
+    height: 40
+  onGuiMessageRect:
+    serializedVersion: 2
+    x: 16
+    y: 58
+    width: 420
+    height: 42
+  onGuiFontSize: 24
+  onGuiTextColor: {r: 1, g: 1, b: 1, a: 1}
+  restartKey: 114
+  allowRestartAfterFinish: 1
+  regenerateMazeOnRestart: 1
+  resetPlayerOnRestart: 1
+  restartReadinessDelaySeconds: 0.25
+  printStateChanges: 1
+  printReadinessWarnings: 1
+  printFinishPositionSource: 1
+  currentState: 0
+  status: WaitingForMaze
+  elapsedTime: 0
+  finalCompletionTime: 0
 --- !u!4 &1131625400
 Transform:
   m_ObjectHideFlags: 0
@@ -666,19 +735,33 @@ MonoBehaviour:
   columns: 14
   rows: 12
   cellSize: 1
-  cellHeight: 0.08
-  visualGap: 0.04
-  randomSeed: 0
-  useRandomSeed: 1
-  mainWaypointCount: 5
+  boardY: 0
+  waypointCount: 5
   falsePathCount: 5
-  minimumFalsePathSegments: 3
-  maximumFalsePathSegments: 7
-  minimumFalsePathSegmentLength: 2
-  maximumFalsePathSegmentLength: 5
+  falsePathMinLength: 3
+  falsePathMaxLength: 9
+  randomizeSeed: 1
+  randomSeed: 0
+  maxFalsePathAttemptsPerPath: 80
+  falsePathReconnectChance: 0.25
+  continueStraightChance: 0.45
+  emptyCellColor: {r: 0, g: 1, b: 0, a: 1}
+  mainPathCellColor: {r: 1, g: 0, b: 0, a: 1}
+  intersectionCellColor: {r: 1, g: 1, b: 1, a: 1}
+  falsePathYellowColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  falsePathAzureColor: {r: 0, g: 0.65, b: 1, a: 1}
+  falsePathMagentaColor: {r: 1, g: 0, b: 1, a: 1}
+  falsePathLimeColor: {r: 0.45, g: 1, b: 0, a: 1}
+  falsePathVioletColor: {r: 0.55, g: 0, b: 1, a: 1}
+  falsePathPinkColor: {r: 1, g: 0.4, b: 0.75, a: 1}
   generateOnStart: 1
-  regenerateInEditor: 1
-  generatedRootName: Generated Maze Board
+  regenerateOnValidate: 0
+  tileHeight: 0.05
+  tileInset: 0.94
+  generatedParentName: Generated Maze Board
+  addTileColliders: 0
+  generatedCells: []
+  status: not generated
 --- !u!4 &1579266072
 Transform:
   m_ObjectHideFlags: 0

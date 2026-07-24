@@ -2,110 +2,201 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+[ExecuteAlways]
 public class MazeBoardGenerator : MonoBehaviour
 {
-    public enum CellKind
+    public enum MazeCellType
     {
         Empty,
         MainPath,
         FalsePath,
-        Intersection
+        Intersection,
+        Entrance,
+        Exit
     }
 
     [Serializable]
-    public class CellRecord
+    public sealed class MazeCellRecord
     {
-        public int column;
-        public int row;
-        public float worldX;
-        public float worldZ;
-        public CellKind kind;
-        public string colorName;
-        public bool isIntersection;
+        [SerializeField] private int column;
+        [SerializeField] private int row;
+        [SerializeField] private Vector3 worldPosition;
+        [SerializeField] private MazeCellType cellType;
+        [SerializeField] private string colorName;
+        [SerializeField] private bool isIntersection;
+
+        public int Column => column;
+        public int Row => row;
+        public Vector3 WorldPosition => worldPosition;
+        public MazeCellType CellType => cellType;
+        public string ColorName => colorName;
+        public bool IsIntersection => isIntersection;
+
+        internal MazeCellRecord(int column, int row, Vector3 worldPosition)
+        {
+            this.column = column;
+            this.row = row;
+            this.worldPosition = worldPosition;
+            cellType = MazeCellType.Empty;
+            colorName = "Green";
+            isIntersection = false;
+        }
+
+        internal void SetWorldPosition(Vector3 value)
+        {
+            worldPosition = value;
+        }
+
+        internal void SetCellType(MazeCellType value)
+        {
+            cellType = value;
+        }
+
+        internal void SetColorName(string value)
+        {
+            colorName = value;
+        }
+
+        internal void SetIntersection(bool value)
+        {
+            isIntersection = value;
+        }
     }
 
-    private struct CellCoord : IEquatable<CellCoord>
+    private enum FalsePathColorId
     {
-        public int Column;
-        public int Row;
+        Yellow,
+        Azure,
+        Magenta,
+        Lime,
+        Violet,
+        Pink
+    }
 
-        public CellCoord(int column, int row)
+    private readonly struct GridPosition : IEquatable<GridPosition>
+    {
+        public readonly int Column;
+        public readonly int Row;
+
+        public GridPosition(int column, int row)
         {
             Column = column;
             Row = row;
         }
 
-        public bool Equals(CellCoord other)
+        public bool Equals(GridPosition other)
         {
             return Column == other.Column && Row == other.Row;
         }
 
         public override bool Equals(object obj)
         {
-            return obj is CellCoord other && Equals(other);
+            return obj is GridPosition other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            return (Column * 397) ^ Row;
+            unchecked
+            {
+                return (Column * 397) ^ Row;
+            }
+        }
+
+        public static bool operator ==(GridPosition left, GridPosition right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(GridPosition left, GridPosition right)
+        {
+            return !left.Equals(right);
         }
     }
 
+    private sealed class MutableCellState
+    {
+        public bool IsMainPath;
+        public bool IsFalsePath;
+        public bool IsEntrance;
+        public bool IsExit;
+        public bool IsIntersection;
+        public int FalsePathIndex = -1;
+        public string FalsePathColorName = string.Empty;
+    }
+
     [Header("Board Size")]
-    [SerializeField] private int columns = 14;
-    [SerializeField] private int rows = 12;
-    [SerializeField] private float cellSize = 1f;
-    [SerializeField] private float cellHeight = 0.08f;
-    [SerializeField] private float visualGap = 0.04f;
+    [SerializeField, Min(2)] private int columns = 14;
+    [SerializeField, Min(2)] private int rows = 12;
+    [SerializeField, Min(0.1f)] private float cellSize = 1f;
+    [SerializeField] private float boardY = 0f;
 
     [Header("Path Generation")]
-    [SerializeField] private int randomSeed = 0;
-    [SerializeField] private bool useRandomSeed = true;
-    [SerializeField] private int mainWaypointCount = 5;
-    [SerializeField] private int falsePathCount = 5;
-    [SerializeField] private int minimumFalsePathSegments = 3;
-    [SerializeField] private int maximumFalsePathSegments = 7;
-    [SerializeField] private int minimumFalsePathSegmentLength = 2;
-    [SerializeField] private int maximumFalsePathSegmentLength = 5;
+    [SerializeField, Min(0)] private int waypointCount = 5;
+    [SerializeField, Min(0)] private int falsePathCount = 5;
+    [SerializeField, Min(1)] private int falsePathMinLength = 3;
+    [SerializeField, Min(1)] private int falsePathMaxLength = 9;
+    [SerializeField] private bool randomizeSeed = true;
+    [SerializeField] private int randomSeed = 12345;
+    [SerializeField, Min(1)] private int maxFalsePathAttemptsPerPath = 80;
+    [SerializeField, Range(0f, 1f)] private float falsePathReconnectChance = 0.25f;
+    [SerializeField, Range(0f, 1f)] private float continueStraightChance = 0.45f;
+
+    [Header("Materials")]
+    [SerializeField] private Color emptyCellColor = Color.green;
+    [SerializeField] private Color mainPathCellColor = Color.red;
+    [SerializeField] private Color intersectionCellColor = Color.white;
+    [SerializeField] private Color falsePathYellowColor = Color.yellow;
+    [SerializeField] private Color falsePathAzureColor = new Color(0f, 0.65f, 1f, 1f);
+    [SerializeField] private Color falsePathMagentaColor = Color.magenta;
+    [SerializeField] private Color falsePathLimeColor = new Color(0.45f, 1f, 0f, 1f);
+    [SerializeField] private Color falsePathVioletColor = new Color(0.55f, 0f, 1f, 1f);
+    [SerializeField] private Color falsePathPinkColor = new Color(1f, 0.4f, 0.75f, 1f);
 
     [Header("Rendering")]
     [SerializeField] private bool generateOnStart = true;
-    [SerializeField] private bool regenerateInEditor = true;
-    [SerializeField] private string generatedRootName = "Generated Maze Board";
+    [SerializeField] private bool regenerateOnValidate = false;
+    [SerializeField, Min(0.001f)] private float tileHeight = 0.05f;
+    [SerializeField, Range(0.1f, 1f)] private float tileInset = 0.94f;
+    [SerializeField] private string generatedParentName = "Generated Maze Board";
+    [SerializeField] private bool addTileColliders = false;
 
-    public string Status { get; private set; } = "not generated";
-    public IReadOnlyList<CellRecord> CellTable => cellTable;
+    [SerializeField, HideInInspector] private List<MazeCellRecord> generatedCells = new List<MazeCellRecord>();
+    [SerializeField, HideInInspector] private string status = "not generated";
 
-    private readonly List<CellRecord> cellTable = new List<CellRecord>();
-    private readonly Dictionary<CellCoord, CellRecord> recordsByCoord = new Dictionary<CellCoord, CellRecord>();
-    private readonly List<CellCoord> mainPathCells = new List<CellCoord>();
-    private readonly List<CellCoord> falsePathCells = new List<CellCoord>();
-    private readonly Color[] falsePathColors =
-    {
-        Color.yellow,
-        new Color(0f, 0.75f, 1f),
-        Color.magenta,
-        Color.green,
-        new Color(0.58f, 0f, 0.83f),
-        new Color(1f, 0.41f, 0.71f)
-    };
+    private MutableCellState[,] cellStates;
+    private Transform generatedParent;
+    private System.Random rng;
 
-    private readonly string[] falsePathColorNames =
-    {
-        "Yellow",
-        "Azure",
-        "Magenta",
-        "Lime",
-        "Violet",
-        "Pink"
-    };
+    public IReadOnlyList<MazeCellRecord> GeneratedCells => generatedCells;
+    public string Status => status;
+    public int Columns => columns;
+    public int Rows => rows;
+    public float CellSize => cellSize;
 
-    private System.Random random;
-    private Transform generatedRoot;
+    private GridPosition EntranceCell => new GridPosition(0, rows / 2);
+    private GridPosition ExitCell => new GridPosition(columns - 1, rows / 2);
 
     private void Start()
     {
-        if (generateOnStart)
+        if (Application.isPlaying && generateOnStart)
+        {
+            GenerateBoard();
+        }
+    }
+
+    private void OnValidate()
+    {
+        columns = Mathf.Max(2, columns);
+        rows = Mathf.Max(2, rows);
+        cellSize = Mathf.Max(0.1f, cellSize);
+        waypointCount = Mathf.Max(0, waypointCount);
+        falsePathCount = Mathf.Max(0, falsePathCount);
+        falsePathMinLength = Mathf.Max(1, falsePathMinLength);
+        falsePathMaxLength = Mathf.Max(falsePathMinLength, falsePathMaxLength);
+        maxFalsePathAttemptsPerPath = Mathf.Max(1, maxFalsePathAttemptsPerPath);
+        tileHeight = Mathf.Max(0.001f, tileHeight);
+
+        if (!Application.isPlaying && regenerateOnValidate)
         {
             GenerateBoard();
         }
@@ -114,401 +205,666 @@ public class MazeBoardGenerator : MonoBehaviour
     [ContextMenu("Generate Board")]
     public void GenerateBoard()
     {
-        ClampParameters();
+        InitializeRandom();
         ClearGeneratedBoard();
-        PrepareRandom();
         CreateEmptyCellTable();
         RouteMainPath();
-        RouteFalsePaths();
+        GenerateFalsePaths();
+        FinalizeCellRecords();
         RenderBoard();
-        Status = "board ready";
-        Debug.Log(Status);
+
+        status = "board ready";
+        Debug.Log("board ready");
     }
 
-    public List<CellRecord> GetCellTable()
+    [ContextMenu("Clear Generated Board")]
+    public void ClearGeneratedBoard()
     {
-        return new List<CellRecord>(cellTable);
+        Transform existing = transform.Find(generatedParentName);
+        if (existing != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(existing.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(existing.gameObject);
+            }
+        }
     }
 
-    private void ClampParameters()
+    private void InitializeRandom()
     {
-        columns = Mathf.Max(2, columns);
-        rows = Mathf.Max(2, rows);
-        cellSize = Mathf.Max(0.1f, cellSize);
-        cellHeight = Mathf.Max(0.01f, cellHeight);
-        visualGap = Mathf.Clamp(visualGap, 0f, cellSize * 0.4f);
-        mainWaypointCount = Mathf.Max(0, mainWaypointCount);
-        falsePathCount = Mathf.Max(0, falsePathCount);
-        minimumFalsePathSegments = Mathf.Max(1, minimumFalsePathSegments);
-        maximumFalsePathSegments = Mathf.Max(minimumFalsePathSegments, maximumFalsePathSegments);
-        minimumFalsePathSegmentLength = Mathf.Max(1, minimumFalsePathSegmentLength);
-        maximumFalsePathSegmentLength = Mathf.Max(minimumFalsePathSegmentLength, maximumFalsePathSegmentLength);
-    }
-
-    private void PrepareRandom()
-    {
-        int seed = useRandomSeed ? Environment.TickCount : randomSeed;
-        random = new System.Random(seed);
+        int seed = randomizeSeed ? Environment.TickCount : randomSeed;
+        rng = new System.Random(seed);
     }
 
     private void CreateEmptyCellTable()
     {
-        cellTable.Clear();
-        recordsByCoord.Clear();
+        generatedCells.Clear();
+        cellStates = new MutableCellState[columns, rows];
 
         for (int row = 0; row < rows; row++)
         {
             for (int column = 0; column < columns; column++)
             {
-                CellCoord coord = new CellCoord(column, row);
-                Vector3 world = GridToWorld(coord);
-                CellRecord record = new CellRecord
-                {
-                    column = column,
-                    row = row,
-                    worldX = world.x,
-                    worldZ = world.z,
-                    kind = CellKind.Empty,
-                    colorName = "Green",
-                    isIntersection = false
-                };
-
-                cellTable.Add(record);
-                recordsByCoord.Add(coord, record);
+                cellStates[column, row] = new MutableCellState();
+                generatedCells.Add(new MazeCellRecord(column, row, GridToWorld(column, row)));
             }
         }
+
+        MutableCellState entrance = GetState(EntranceCell);
+        entrance.IsMainPath = true;
+        entrance.IsEntrance = true;
+
+        MutableCellState exit = GetState(ExitCell);
+        exit.IsMainPath = true;
+        exit.IsExit = true;
     }
 
     private void RouteMainPath()
     {
-        mainPathCells.Clear();
-        CellCoord current = new CellCoord(0, rows / 2);
-        CellCoord exit = new CellCoord(columns - 1, rows / 2);
-        List<CellCoord> waypoints = SelectInteriorWaypoints(mainWaypointCount);
-
-        MarkMainPathCell(current);
+        List<GridPosition> waypoints = SelectInteriorWaypoints(waypointCount);
+        GridPosition current = EntranceCell;
 
         while (waypoints.Count > 0)
         {
-            CellCoord target = FindNearestCell(current, waypoints);
-            AddRoute(current, target, true, 0);
+            int nearestIndex = FindNearestWaypointIndex(current, waypoints);
+            GridPosition target = waypoints[nearestIndex];
+            RouteOrthogonalSegment(current, target, true, -1, string.Empty);
             current = target;
-            waypoints.Remove(target);
+            waypoints.RemoveAt(nearestIndex);
         }
 
-        AddRoute(current, exit, true, 0);
+        RouteOrthogonalSegment(current, ExitCell, true, -1, string.Empty);
     }
 
-    private List<CellCoord> SelectInteriorWaypoints(int count)
+    private List<GridPosition> SelectInteriorWaypoints(int count)
     {
-        List<CellCoord> waypoints = new List<CellCoord>();
-        int safetyLimit = columns * rows * 4;
+        List<GridPosition> waypoints = new List<GridPosition>();
+        HashSet<GridPosition> used = new HashSet<GridPosition>();
 
-        while (waypoints.Count < count && safetyLimit > 0)
+        int interiorColumnCount = Mathf.Max(0, columns - 2);
+        int interiorRowCount = Mathf.Max(0, rows - 2);
+        int maxUniqueInteriorCells = interiorColumnCount * interiorRowCount;
+        int targetCount = Mathf.Min(count, maxUniqueInteriorCells);
+
+        int guard = Mathf.Max(100, targetCount * 50);
+        while (waypoints.Count < targetCount && guard > 0)
         {
-            int column = random.Next(1, columns - 1);
-            int row = random.Next(1, rows - 1);
-            CellCoord candidate = new CellCoord(column, row);
+            guard--;
 
-            if (!waypoints.Contains(candidate))
+            int column = rng.Next(1, columns - 1);
+            int row = rng.Next(1, rows - 1);
+            GridPosition candidate = new GridPosition(column, row);
+
+            if (used.Contains(candidate))
             {
-                waypoints.Add(candidate);
+                continue;
             }
 
-            safetyLimit--;
+            used.Add(candidate);
+            waypoints.Add(candidate);
         }
 
         return waypoints;
     }
 
-    private CellCoord FindNearestCell(CellCoord from, List<CellCoord> candidates)
+    private int FindNearestWaypointIndex(GridPosition current, List<GridPosition> waypoints)
     {
-        CellCoord nearest = candidates[0];
-        int nearestDistance = ManhattanDistance(from, nearest);
+        int bestDistance = int.MaxValue;
+        List<int> tiedIndices = new List<int>();
 
-        for (int i = 1; i < candidates.Count; i++)
+        for (int i = 0; i < waypoints.Count; i++)
         {
-            int distance = ManhattanDistance(from, candidates[i]);
-            if (distance < nearestDistance)
+            int distance = ManhattanDistance(current, waypoints[i]);
+
+            if (distance < bestDistance)
             {
-                nearest = candidates[i];
-                nearestDistance = distance;
+                bestDistance = distance;
+                tiedIndices.Clear();
+                tiedIndices.Add(i);
+            }
+            else if (distance == bestDistance)
+            {
+                tiedIndices.Add(i);
             }
         }
 
-        return nearest;
+        return tiedIndices[rng.Next(tiedIndices.Count)];
     }
 
-    private int ManhattanDistance(CellCoord a, CellCoord b)
+    private void RouteOrthogonalSegment(
+        GridPosition start,
+        GridPosition target,
+        bool markAsMainPath,
+        int falsePathIndex,
+        string falsePathColorName)
     {
-        return Mathf.Abs(a.Column - b.Column) + Mathf.Abs(a.Row - b.Row);
-    }
+        GridPosition current = start;
+        MarkCell(current, markAsMainPath, !markAsMainPath, falsePathIndex, falsePathColorName);
 
-    private void RouteFalsePaths()
-    {
-        falsePathCells.Clear();
-
-        for (int pathIndex = 0; pathIndex < falsePathCount; pathIndex++)
+        while (current != target)
         {
-            CellCoord current = new CellCoord(random.Next(0, columns), random.Next(0, rows));
-            MarkFalsePathCell(current, pathIndex);
+            bool canMoveHorizontal = current.Column != target.Column;
+            bool canMoveVertical = current.Row != target.Row;
 
-            int segmentCount = random.Next(minimumFalsePathSegments, maximumFalsePathSegments + 1);
-
-            for (int segment = 0; segment < segmentCount; segment++)
+            bool moveHorizontal;
+            if (canMoveHorizontal && canMoveVertical)
             {
-                Vector2Int direction = GetRandomDirection();
-                int length = random.Next(minimumFalsePathSegmentLength, maximumFalsePathSegmentLength + 1);
+                moveHorizontal = rng.Next(0, 2) == 0;
+            }
+            else
+            {
+                moveHorizontal = canMoveHorizontal;
+            }
 
-                for (int step = 0; step < length; step++)
-                {
-                    CellCoord next = new CellCoord(current.Column + direction.x, current.Row + direction.y);
+            if (moveHorizontal)
+            {
+                current = new GridPosition(
+                    current.Column + Math.Sign(target.Column - current.Column),
+                    current.Row);
+            }
+            else
+            {
+                current = new GridPosition(
+                    current.Column,
+                    current.Row + Math.Sign(target.Row - current.Row));
+            }
 
-                    if (!IsInsideBoard(next))
-                    {
-                        break;
-                    }
+            MarkCell(current, markAsMainPath, !markAsMainPath, falsePathIndex, falsePathColorName);
+        }
+    }
 
-                    current = next;
-                    MarkFalsePathCell(current, pathIndex);
-                }
+    private void GenerateFalsePaths()
+    {
+        for (int falsePathIndex = 0; falsePathIndex < falsePathCount; falsePathIndex++)
+        {
+            FalsePathColorId colorId = (FalsePathColorId)(falsePathIndex % 6);
+            string colorName = GetFalsePathColorName(colorId);
+
+            bool created = false;
+            for (int attempt = 0; attempt < maxFalsePathAttemptsPerPath && !created; attempt++)
+            {
+                created = TryGenerateFalsePath(falsePathIndex, colorName);
             }
         }
     }
 
-    private Vector2Int GetRandomDirection()
+    private bool TryGenerateFalsePath(int falsePathIndex, string colorName)
     {
-        int value = random.Next(0, 4);
+        List<GridPosition> starts = GetFalsePathStartCandidates();
 
-        if (value == 0)
+        if (starts.Count == 0)
         {
-            return new Vector2Int(1, 0);
+            return false;
         }
 
-        if (value == 1)
+        GridPosition start = starts[rng.Next(starts.Count)];
+        GridPosition current = start;
+        GridPosition previous = start;
+        Vector2Int previousDirection = Vector2Int.zero;
+        int targetLength = rng.Next(falsePathMinLength, falsePathMaxLength + 1);
+        List<GridPosition> newlyMarkedCells = new List<GridPosition>();
+
+        MarkCell(start, false, true, falsePathIndex, colorName);
+
+        for (int step = 0; step < targetLength; step++)
         {
-            return new Vector2Int(-1, 0);
-        }
+            List<GridPosition> candidates = GetFalsePathStepCandidates(current, previous, previousDirection);
 
-        if (value == 2)
-        {
-            return new Vector2Int(0, 1);
-        }
-
-        return new Vector2Int(0, -1);
-    }
-
-    private void AddRoute(CellCoord start, CellCoord target, bool isMainPath, int falsePathIndex)
-    {
-        List<CellCoord> routePoints = BuildOneOrThreeSegmentRoute(start, target);
-
-        for (int i = 0; i < routePoints.Count - 1; i++)
-        {
-            AddStraightSegment(routePoints[i], routePoints[i + 1], isMainPath, falsePathIndex);
-        }
-    }
-
-    private List<CellCoord> BuildOneOrThreeSegmentRoute(CellCoord start, CellCoord target)
-    {
-        List<CellCoord> points = new List<CellCoord> { start };
-
-        if (start.Column == target.Column || start.Row == target.Row)
-        {
-            points.Add(target);
-            return points;
-        }
-
-        bool horizontalFirst = random.Next(0, 2) == 0;
-
-        if (horizontalFirst)
-        {
-            int middleColumn = random.Next(Mathf.Min(start.Column, target.Column), Mathf.Max(start.Column, target.Column) + 1);
-            points.Add(new CellCoord(middleColumn, start.Row));
-            points.Add(new CellCoord(middleColumn, target.Row));
-        }
-        else
-        {
-            int middleRow = random.Next(Mathf.Min(start.Row, target.Row), Mathf.Max(start.Row, target.Row) + 1);
-            points.Add(new CellCoord(start.Column, middleRow));
-            points.Add(new CellCoord(target.Column, middleRow));
-        }
-
-        points.Add(target);
-        return points;
-    }
-
-    private void AddStraightSegment(CellCoord start, CellCoord target, bool isMainPath, int falsePathIndex)
-    {
-        int columnStep = Math.Sign(target.Column - start.Column);
-        int rowStep = Math.Sign(target.Row - start.Row);
-        CellCoord current = start;
-
-        while (!current.Equals(target))
-        {
-            current = new CellCoord(current.Column + columnStep, current.Row + rowStep);
-
-            if (!IsInsideBoard(current))
+            if (candidates.Count == 0)
             {
                 break;
             }
 
-            if (isMainPath)
+            GridPosition next = ChooseFalsePathStep(current, candidates, previousDirection);
+            MutableCellState nextState = GetState(next);
+            bool wasEmpty = IsEmpty(next);
+
+            MarkCell(next, false, true, falsePathIndex, colorName);
+
+            if (wasEmpty)
             {
-                MarkMainPathCell(current);
+                newlyMarkedCells.Add(next);
             }
-            else
+
+            previousDirection = new Vector2Int(next.Column - current.Column, next.Row - current.Row);
+            previous = current;
+            current = next;
+
+            if ((nextState.IsMainPath || nextState.IsFalsePath || nextState.IsIntersection) && !wasEmpty)
             {
-                MarkFalsePathCell(current, falsePathIndex);
+                break;
             }
         }
+
+        bool hasNewCells = newlyMarkedCells.Count > 0;
+        bool connectedToWalkableCell = CountWalkableNeighbors(start) > 0 || CountWalkableNeighbors(current) > 0;
+        return hasNewCells && connectedToWalkableCell;
     }
 
-    private void MarkMainPathCell(CellCoord coord)
+    private List<GridPosition> GetFalsePathStartCandidates()
     {
-        if (!IsInsideBoard(coord))
+        List<GridPosition> candidates = new List<GridPosition>();
+
+        for (int row = 0; row < rows; row++)
         {
-            return;
-        }
-
-        CellRecord record = recordsByCoord[coord];
-
-        if (record.kind == CellKind.FalsePath)
-        {
-            record.kind = CellKind.Intersection;
-            record.isIntersection = true;
-            record.colorName = "Intersection";
-        }
-        else if (record.kind != CellKind.Intersection)
-        {
-            record.kind = CellKind.MainPath;
-            record.colorName = "Red";
-        }
-
-        if (!mainPathCells.Contains(coord))
-        {
-            mainPathCells.Add(coord);
-        }
-    }
-
-    private void MarkFalsePathCell(CellCoord coord, int pathIndex)
-    {
-        if (!IsInsideBoard(coord))
-        {
-            return;
-        }
-
-        CellRecord record = recordsByCoord[coord];
-
-        if (record.kind == CellKind.MainPath || record.kind == CellKind.FalsePath || record.kind == CellKind.Intersection)
-        {
-            record.kind = CellKind.Intersection;
-            record.isIntersection = true;
-            record.colorName = "Intersection";
-        }
-        else
-        {
-            record.kind = CellKind.FalsePath;
-            record.colorName = falsePathColorNames[pathIndex % falsePathColorNames.Length];
-        }
-
-        if (!falsePathCells.Contains(coord))
-        {
-            falsePathCells.Add(coord);
-        }
-    }
-
-    private bool IsInsideBoard(CellCoord coord)
-    {
-        return coord.Column >= 0 && coord.Column < columns && coord.Row >= 0 && coord.Row < rows;
-    }
-
-    private void RenderBoard()
-    {
-        GameObject rootObject = new GameObject(generatedRootName);
-        rootObject.transform.SetParent(transform, false);
-        generatedRoot = rootObject.transform;
-
-        foreach (CellRecord record in cellTable)
-        {
-            GameObject cell = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cell.name = $"Cell [{record.column}, {record.row}] {record.kind}";
-            cell.transform.SetParent(generatedRoot, false);
-            cell.transform.position = new Vector3(record.worldX, 0f, record.worldZ);
-            cell.transform.localScale = new Vector3(cellSize - visualGap, cellHeight, cellSize - visualGap);
-
-            Renderer renderer = cell.GetComponent<Renderer>();
-            renderer.sharedMaterial = CreateMaterial(GetColorForRecord(record));
-        }
-    }
-
-    private Color GetColorForRecord(CellRecord record)
-    {
-        if (record.kind == CellKind.MainPath)
-        {
-            return Color.red;
-        }
-
-        if (record.kind == CellKind.Intersection)
-        {
-            return Color.white;
-        }
-
-        if (record.kind == CellKind.FalsePath)
-        {
-            for (int i = 0; i < falsePathColorNames.Length; i++)
+            for (int column = 0; column < columns; column++)
             {
-                if (record.colorName == falsePathColorNames[i])
+                GridPosition position = new GridPosition(column, row);
+                MutableCellState state = GetState(position);
+
+                if (!IsWalkable(position))
                 {
-                    return falsePathColors[i];
+                    continue;
+                }
+
+                if (state.IsEntrance || state.IsExit)
+                {
+                    continue;
+                }
+
+                if (HasUnusedNeighbor(position))
+                {
+                    candidates.Add(position);
                 }
             }
         }
 
-        return Color.green;
+        return candidates;
     }
 
-    private Material CreateMaterial(Color color)
+    private List<GridPosition> GetFalsePathStepCandidates(
+        GridPosition current,
+        GridPosition previous,
+        Vector2Int previousDirection)
     {
-        Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        material.color = color;
-        return material;
+        List<GridPosition> candidates = new List<GridPosition>();
+        GridPosition[] neighbors = GetOrthogonalNeighbors(current);
+
+        for (int i = 0; i < neighbors.Length; i++)
+        {
+            GridPosition candidate = neighbors[i];
+
+            if (!IsInsideBoard(candidate))
+            {
+                continue;
+            }
+
+            if (candidate == previous)
+            {
+                continue;
+            }
+
+            MutableCellState state = GetState(candidate);
+
+            if (state.IsEntrance || state.IsExit)
+            {
+                continue;
+            }
+
+            if (IsEmpty(candidate))
+            {
+                candidates.Add(candidate);
+                continue;
+            }
+
+            if (rng.NextDouble() <= falsePathReconnectChance)
+            {
+                candidates.Add(candidate);
+            }
+        }
+
+        return candidates;
     }
 
-    private Vector3 GridToWorld(CellCoord coord)
+    private GridPosition ChooseFalsePathStep(
+        GridPosition current,
+        List<GridPosition> candidates,
+        Vector2Int previousDirection)
     {
-        float originX = -((columns - 1) * cellSize) * 0.5f;
-        float originZ = -((rows - 1) * cellSize) * 0.5f;
-        float x = originX + coord.Column * cellSize;
-        float z = originZ + coord.Row * cellSize;
-        return new Vector3(x, 0f, z);
+        if (previousDirection != Vector2Int.zero && rng.NextDouble() <= continueStraightChance)
+        {
+            GridPosition straight = new GridPosition(
+                current.Column + previousDirection.x,
+                current.Row + previousDirection.y);
+
+            if (candidates.Contains(straight))
+            {
+                return straight;
+            }
+        }
+
+        List<GridPosition> emptyCandidates = new List<GridPosition>();
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            if (IsEmpty(candidates[i]))
+            {
+                emptyCandidates.Add(candidates[i]);
+            }
+        }
+
+        if (emptyCandidates.Count > 0)
+        {
+            return emptyCandidates[rng.Next(emptyCandidates.Count)];
+        }
+
+        return candidates[rng.Next(candidates.Count)];
     }
 
-    private void ClearGeneratedBoard()
+    private void MarkCell(
+        GridPosition position,
+        bool asMainPath,
+        bool asFalsePath,
+        int falsePathIndex,
+        string falsePathColorName)
     {
-        Transform existing = transform.Find(generatedRootName);
-
-        if (existing == null)
+        if (!IsInsideBoard(position))
         {
             return;
         }
 
-        if (Application.isPlaying)
+        MutableCellState state = GetState(position);
+
+        if (asMainPath)
         {
-            Destroy(existing.gameObject);
+            state.IsMainPath = true;
         }
-        else
+
+        if (asFalsePath)
         {
-            DestroyImmediate(existing.gameObject);
+            state.IsFalsePath = true;
+
+            if (state.FalsePathIndex < 0)
+            {
+                state.FalsePathIndex = falsePathIndex;
+                state.FalsePathColorName = falsePathColorName;
+            }
+            else if (state.FalsePathIndex != falsePathIndex)
+            {
+                state.IsIntersection = true;
+            }
+        }
+
+        if (state.IsMainPath && state.IsFalsePath)
+        {
+            state.IsIntersection = true;
         }
     }
 
-    private void OnValidate()
+    private void FinalizeCellRecords()
     {
-        ClampParameters();
-
-        if (!Application.isPlaying && regenerateInEditor && generatedRoot != null)
+        for (int i = 0; i < generatedCells.Count; i++)
         {
-            GenerateBoard();
+            MazeCellRecord record = generatedCells[i];
+            GridPosition position = new GridPosition(record.Column, record.Row);
+            MutableCellState state = GetState(position);
+
+            record.SetWorldPosition(GridToWorld(record.Column, record.Row));
+
+            if (state.IsIntersection)
+            {
+                record.SetCellType(MazeCellType.Intersection);
+                record.SetColorName("White");
+                record.SetIntersection(true);
+            }
+            else if (state.IsEntrance)
+            {
+                record.SetCellType(MazeCellType.Entrance);
+                record.SetColorName("Red");
+                record.SetIntersection(false);
+            }
+            else if (state.IsExit)
+            {
+                record.SetCellType(MazeCellType.Exit);
+                record.SetColorName("Red");
+                record.SetIntersection(false);
+            }
+            else if (state.IsMainPath)
+            {
+                record.SetCellType(MazeCellType.MainPath);
+                record.SetColorName("Red");
+                record.SetIntersection(false);
+            }
+            else if (state.IsFalsePath)
+            {
+                record.SetCellType(MazeCellType.FalsePath);
+                record.SetColorName(string.IsNullOrEmpty(state.FalsePathColorName) ? "Yellow" : state.FalsePathColorName);
+                record.SetIntersection(false);
+            }
+            else
+            {
+                record.SetCellType(MazeCellType.Empty);
+                record.SetColorName("Green");
+                record.SetIntersection(false);
+            }
+        }
+    }
+
+    private void RenderBoard()
+    {
+        GameObject parentObject = new GameObject(generatedParentName);
+        parentObject.transform.SetParent(transform, false);
+        generatedParent = parentObject.transform;
+
+        Material emptyMaterial = CreateMaterial("Empty Cells", emptyCellColor);
+        Material mainPathMaterial = CreateMaterial("Main Path Cells", mainPathCellColor);
+        Material intersectionMaterial = CreateMaterial("Intersection Cells", intersectionCellColor);
+        Material yellowMaterial = CreateMaterial("False Path Yellow Cells", falsePathYellowColor);
+        Material azureMaterial = CreateMaterial("False Path Azure Cells", falsePathAzureColor);
+        Material magentaMaterial = CreateMaterial("False Path Magenta Cells", falsePathMagentaColor);
+        Material limeMaterial = CreateMaterial("False Path Lime Cells", falsePathLimeColor);
+        Material violetMaterial = CreateMaterial("False Path Violet Cells", falsePathVioletColor);
+        Material pinkMaterial = CreateMaterial("False Path Pink Cells", falsePathPinkColor);
+
+        for (int i = 0; i < generatedCells.Count; i++)
+        {
+            MazeCellRecord cell = generatedCells[i];
+
+            GameObject tile = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            tile.name = $"Cell [{cell.Column}, {cell.Row}] - {cell.CellType} - {cell.ColorName}";
+            tile.transform.SetParent(generatedParent, false);
+            tile.transform.position = new Vector3(cell.WorldPosition.x, boardY - tileHeight * 0.5f, cell.WorldPosition.z);
+            tile.transform.localScale = new Vector3(cellSize * tileInset, tileHeight, cellSize * tileInset);
+
+            MeshRenderer renderer = tile.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = GetMaterialForCell(
+                cell,
+                emptyMaterial,
+                mainPathMaterial,
+                intersectionMaterial,
+                yellowMaterial,
+                azureMaterial,
+                magentaMaterial,
+                limeMaterial,
+                violetMaterial,
+                pinkMaterial);
+
+            if (!addTileColliders)
+            {
+                Collider collider = tile.GetComponent<Collider>();
+                if (collider != null)
+                {
+                    if (Application.isPlaying)
+                    {
+                        Destroy(collider);
+                    }
+                    else
+                    {
+                        DestroyImmediate(collider);
+                    }
+                }
+            }
+        }
+    }
+
+    private Material GetMaterialForCell(
+        MazeCellRecord cell,
+        Material emptyMaterial,
+        Material mainPathMaterial,
+        Material intersectionMaterial,
+        Material yellowMaterial,
+        Material azureMaterial,
+        Material magentaMaterial,
+        Material limeMaterial,
+        Material violetMaterial,
+        Material pinkMaterial)
+    {
+        if (cell.IsIntersection || cell.CellType == MazeCellType.Intersection)
+        {
+            return intersectionMaterial;
+        }
+
+        if (cell.CellType == MazeCellType.MainPath ||
+            cell.CellType == MazeCellType.Entrance ||
+            cell.CellType == MazeCellType.Exit)
+        {
+            return mainPathMaterial;
+        }
+
+        if (cell.CellType == MazeCellType.FalsePath)
+        {
+            switch (cell.ColorName)
+            {
+                case "Yellow":
+                    return yellowMaterial;
+                case "Azure":
+                    return azureMaterial;
+                case "Magenta":
+                    return magentaMaterial;
+                case "Lime":
+                    return limeMaterial;
+                case "Violet":
+                    return violetMaterial;
+                case "Pink":
+                    return pinkMaterial;
+                default:
+                    return yellowMaterial;
+            }
+        }
+
+        return emptyMaterial;
+    }
+
+    private Material CreateMaterial(string materialName, Color color)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+        }
+
+        Material material = new Material(shader);
+        material.name = materialName;
+        material.color = color;
+        return material;
+    }
+
+    private Vector3 GridToWorld(int column, int row)
+    {
+        float worldX = (column - (columns - 1) * 0.5f) * cellSize;
+        float worldZ = ((rows - 1) * 0.5f - row) * cellSize;
+        return new Vector3(worldX, boardY, worldZ);
+    }
+
+    private int ManhattanDistance(GridPosition a, GridPosition b)
+    {
+        return Mathf.Abs(a.Column - b.Column) + Mathf.Abs(a.Row - b.Row);
+    }
+
+    private bool IsInsideBoard(GridPosition position)
+    {
+        return position.Column >= 0 &&
+               position.Column < columns &&
+               position.Row >= 0 &&
+               position.Row < rows;
+    }
+
+    private bool IsEmpty(GridPosition position)
+    {
+        MutableCellState state = GetState(position);
+        return !state.IsMainPath && !state.IsFalsePath && !state.IsEntrance && !state.IsExit && !state.IsIntersection;
+    }
+
+    private bool IsWalkable(GridPosition position)
+    {
+        if (!IsInsideBoard(position))
+        {
+            return false;
+        }
+
+        MutableCellState state = GetState(position);
+        return state.IsMainPath || state.IsFalsePath || state.IsEntrance || state.IsExit || state.IsIntersection;
+    }
+
+    private bool HasUnusedNeighbor(GridPosition position)
+    {
+        GridPosition[] neighbors = GetOrthogonalNeighbors(position);
+
+        for (int i = 0; i < neighbors.Length; i++)
+        {
+            if (IsInsideBoard(neighbors[i]) && IsEmpty(neighbors[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int CountWalkableNeighbors(GridPosition position)
+    {
+        int count = 0;
+        GridPosition[] neighbors = GetOrthogonalNeighbors(position);
+
+        for (int i = 0; i < neighbors.Length; i++)
+        {
+            if (IsWalkable(neighbors[i]))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private GridPosition[] GetOrthogonalNeighbors(GridPosition position)
+    {
+        return new[]
+        {
+            new GridPosition(position.Column, position.Row - 1),
+            new GridPosition(position.Column + 1, position.Row),
+            new GridPosition(position.Column, position.Row + 1),
+            new GridPosition(position.Column - 1, position.Row)
+        };
+    }
+
+    private MutableCellState GetState(GridPosition position)
+    {
+        return cellStates[position.Column, position.Row];
+    }
+
+    private string GetFalsePathColorName(FalsePathColorId colorId)
+    {
+        switch (colorId)
+        {
+            case FalsePathColorId.Yellow:
+                return "Yellow";
+            case FalsePathColorId.Azure:
+                return "Azure";
+            case FalsePathColorId.Magenta:
+                return "Magenta";
+            case FalsePathColorId.Lime:
+                return "Lime";
+            case FalsePathColorId.Violet:
+                return "Violet";
+            case FalsePathColorId.Pink:
+                return "Pink";
+            default:
+                return "Yellow";
         }
     }
 }

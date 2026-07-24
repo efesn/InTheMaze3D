@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+[ExecuteAlways]
 public class MazeWallsGenerator : MonoBehaviour
 {
     private enum WallDirection
@@ -13,419 +14,719 @@ public class MazeWallsGenerator : MonoBehaviour
         West
     }
 
-    private struct CellCoord : IEquatable<CellCoord>
+    private enum WallColorId
     {
-        public int Column;
-        public int Row;
+        Yellow,
+        Azure,
+        Magenta,
+        Lime,
+        Violet,
+        Pink,
+        Green
+    }
 
-        public CellCoord(int column, int row)
+    private readonly struct GridPosition : IEquatable<GridPosition>
+    {
+        public readonly int Column;
+        public readonly int Row;
+
+        public GridPosition(int column, int row)
         {
             Column = column;
             Row = row;
         }
 
-        public bool Equals(CellCoord other)
+        public bool Equals(GridPosition other)
         {
             return Column == other.Column && Row == other.Row;
         }
 
         public override bool Equals(object obj)
         {
-            return obj is CellCoord other && Equals(other);
+            return obj is GridPosition other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            return (Column * 397) ^ Row;
+            unchecked
+            {
+                return (Column * 397) ^ Row;
+            }
+        }
+
+        public static bool operator ==(GridPosition left, GridPosition right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(GridPosition left, GridPosition right)
+        {
+            return !left.Equals(right);
         }
     }
 
-    private struct WallData
+    private sealed class WallRecord
     {
-        public CellCoord Cell;
+        public string EdgeId;
+        public GridPosition SourceCell;
         public WallDirection Direction;
-        public Vector3 Position;
-        public Vector3 Scale;
+        public Vector3 WorldPosition;
+        public Quaternion WorldRotation;
+        public Vector3 LocalScale;
+        public bool IsBoundaryWall;
+        public bool ProtectsUnusedCell;
+        public WallColorId ColorId;
     }
 
     [Header("Board Source")]
-    [SerializeField] private MazeBoardGenerator mazeBoardGenerator;
-    [SerializeField] private bool findBoardGeneratorAutomatically = true;
-    [SerializeField] private float boardReadyWaitTime = 3f;
+    [SerializeField] private MazeBoardGenerator boardSource;
+    [SerializeField] private bool autoFindBoardSource = true;
+    [SerializeField, Min(0)] private int boardReadyRetryCount = 10;
+    [SerializeField, Min(0.01f)] private float boardReadyRetryDelaySeconds = 0.15f;
+    [SerializeField] private bool generateOnStart = true;
 
     [Header("Wall Generation")]
-    [SerializeField] private bool generateOnStart = true;
-    [SerializeField] private bool removeRandomWalls = true;
-    [SerializeField, Range(0f, 1f)] private float wallRemovalPercent = 0.2f;
-    [SerializeField] private int randomSeed = 0;
-    [SerializeField] private bool useRandomSeed = true;
-    [SerializeField] private string generatedRootName = "Generated Maze Walls";
+    [SerializeField] private bool removeNonCriticalWalls = false;
+    [SerializeField, Range(0f, 0.2f)] private float maxNonCriticalWallRemovalRatio = 0.2f;
+    [SerializeField] private bool randomizeWallSeed = true;
+    [SerializeField] private int wallRandomSeed = 24680;
 
     [Header("Wall Geometry")]
-    [SerializeField] private float cellSize = 1f;
-    [SerializeField] private float wallWidth = 0.2f;
-    [SerializeField] private float wallHeight = 1.2f;
-    [SerializeField] private float wallVerticalOffset = 0f;
+    [SerializeField, Min(0.01f)] private float wallWidth = 0.2f;
+    [SerializeField, Min(0.01f)] private float wallHeight = 1.2f;
+    [SerializeField] private float boardSurfaceY = 0f;
+    [SerializeField] private string generatedParentName = "Generated Maze Walls";
 
     [Header("Wall Physics")]
-    [SerializeField] private float bounciness = 0.9f;
-    [SerializeField] private float dynamicFriction = 0.2f;
-    [SerializeField] private float staticFriction = 0.2f;
+    [SerializeField] private bool collidersEnabled = true;
+    [SerializeField, Range(0f, 1f)] private float bounciness = 0.9f;
+    [SerializeField, Range(0f, 1f)] private float dynamicFriction = 0.2f;
+    [SerializeField, Range(0f, 1f)] private float staticFriction = 0.2f;
+    [SerializeField] private PhysicsMaterialCombine frictionCombine = PhysicsMaterialCombine.Average;
+    [SerializeField] private PhysicsMaterialCombine bounceCombine = PhysicsMaterialCombine.Maximum;
 
-    public string Status { get; private set; } = "walls not generated";
+    [Header("Wall Materials")]
+    [SerializeField] private Color yellowWallColor = Color.yellow;
+    [SerializeField] private Color azureWallColor = new Color(0f, 0.65f, 1f, 1f);
+    [SerializeField] private Color magentaWallColor = Color.magenta;
+    [SerializeField] private Color limeWallColor = new Color(0.45f, 1f, 0f, 1f);
+    [SerializeField] private Color violetWallColor = new Color(0.55f, 0f, 1f, 1f);
+    [SerializeField] private Color pinkWallColor = new Color(1f, 0.4f, 0.75f, 1f);
+    [SerializeField] private Color greenWallColor = Color.green;
 
-    private readonly Color[] wallColors =
+    [SerializeField, HideInInspector] private string status = "not generated";
+
+    private readonly List<WallRecord> generatedWallRecords = new List<WallRecord>();
+    private readonly Dictionary<string, WallRecord> wallByEdgeId = new Dictionary<string, WallRecord>();
+    private System.Random wallRandom;
+    private Material yellowMaterial;
+    private Material azureMaterial;
+    private Material magentaMaterial;
+    private Material limeMaterial;
+    private Material violetMaterial;
+    private Material pinkMaterial;
+    private Material greenMaterial;
+    private PhysicsMaterial sharedWallPhysicsMaterial;
+
+    public string Status => status;
+    public IReadOnlyList<string> GeneratedWallEdgeIds
     {
-        Color.yellow,
-        new Color(0f, 0.75f, 1f),
-        Color.magenta,
-        Color.green,
-        new Color(0.58f, 0f, 0.83f),
-        new Color(1f, 0.41f, 0.71f),
-        Color.green
-    };
+        get
+        {
+            List<string> ids = new List<string>(generatedWallRecords.Count);
+            for (int i = 0; i < generatedWallRecords.Count; i++)
+            {
+                ids.Add(generatedWallRecords[i].EdgeId);
+            }
 
-    private System.Random random;
-    private Transform generatedRoot;
-    private PhysicsMaterial wallPhysicsMaterial;
+            return ids;
+        }
+    }
 
     private void Start()
     {
-        if (generateOnStart)
+        if (Application.isPlaying && generateOnStart)
         {
             StartCoroutine(GenerateWallsWhenBoardIsReady());
         }
     }
 
+    private void OnValidate()
+    {
+        wallWidth = Mathf.Max(0.01f, wallWidth);
+        wallHeight = Mathf.Max(0.01f, wallHeight);
+        boardReadyRetryCount = Mathf.Max(0, boardReadyRetryCount);
+        boardReadyRetryDelaySeconds = Mathf.Max(0.01f, boardReadyRetryDelaySeconds);
+        maxNonCriticalWallRemovalRatio = Mathf.Clamp(maxNonCriticalWallRemovalRatio, 0f, 0.2f);
+    }
+
     [ContextMenu("Generate Walls")]
     public void GenerateWalls()
     {
-        if (!ResolveBoardGenerator())
+        if (!ResolveBoardSource())
         {
-            Debug.LogWarning("MazeWallsGenerator: MazeBoardGenerator was not found.");
-            Status = "board not ready";
+            Debug.LogWarning("MazeWallsGenerator could not generate walls because no MazeBoardGenerator component was found.");
             return;
         }
 
-        if (mazeBoardGenerator.Status != "board ready")
+        if (!IsBoardReady())
         {
-            Debug.LogWarning("MazeWallsGenerator: board is not ready.");
-            Status = "board not ready";
+            Debug.LogWarning("MazeWallsGenerator could not generate walls because the board source status is not exactly 'board ready'.");
             return;
         }
 
-        PrepareRandom();
-        ClearGeneratedWalls();
-        CreateWallPhysicsMaterial();
+        GenerateWallsImmediately();
+    }
 
-        Dictionary<CellCoord, MazeBoardGenerator.CellRecord> pathCells = BuildPathCellLookup();
-        List<WallData> walls = BuildWallData(pathCells);
-
-        if (removeRandomWalls)
+    [ContextMenu("Clear Generated Walls")]
+    public void ClearGeneratedWalls()
+    {
+        Transform existing = transform.Find(generatedParentName);
+        if (existing != null)
         {
-            RemoveRandomWallData(walls);
+            if (Application.isPlaying)
+            {
+                Destroy(existing.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(existing.gameObject);
+            }
         }
 
-        RenderWalls(walls);
-        Status = "walls ready";
-        Debug.Log(Status);
+        generatedWallRecords.Clear();
+        wallByEdgeId.Clear();
+        status = "not generated";
     }
 
     private IEnumerator GenerateWallsWhenBoardIsReady()
     {
-        float elapsedTime = 0f;
+        ResolveBoardSource();
 
-        while (elapsedTime < boardReadyWaitTime)
+        int attemptsRemaining = boardReadyRetryCount;
+        while (!IsBoardReady() && attemptsRemaining > 0)
         {
-            if (ResolveBoardGenerator() && mazeBoardGenerator.Status == "board ready")
-            {
-                GenerateWalls();
-                yield break;
-            }
-
-            elapsedTime += Time.deltaTime;
-            yield return null;
+            attemptsRemaining--;
+            yield return new WaitForSeconds(boardReadyRetryDelaySeconds);
+            ResolveBoardSource();
         }
 
-        Debug.LogWarning("MazeWallsGenerator: board was not ready before timeout.");
-        Status = "board not ready";
+        if (!IsBoardReady())
+        {
+            Debug.LogWarning("MazeWallsGenerator waited for MazeBoardGenerator, but the board was not ready. Walls were not generated.");
+            yield break;
+        }
+
+        GenerateWallsImmediately();
     }
 
-    private bool ResolveBoardGenerator()
+    private bool ResolveBoardSource()
     {
-        if (mazeBoardGenerator != null)
+        if (boardSource != null)
         {
             return true;
         }
 
-        if (!findBoardGeneratorAutomatically)
+        if (!autoFindBoardSource)
         {
             return false;
         }
 
-        mazeBoardGenerator = FindObjectOfType<MazeBoardGenerator>();
-        return mazeBoardGenerator != null;
+#if UNITY_2023_1_OR_NEWER
+        boardSource = FindFirstObjectByType<MazeBoardGenerator>();
+#else
+        boardSource = FindObjectOfType<MazeBoardGenerator>();
+#endif
+        return boardSource != null;
     }
 
-    private void PrepareRandom()
+    private bool IsBoardReady()
     {
-        int seed = useRandomSeed ? Environment.TickCount : randomSeed;
-        random = new System.Random(seed);
+        return boardSource != null && boardSource.Status == "board ready";
     }
 
-    private Dictionary<CellCoord, MazeBoardGenerator.CellRecord> BuildPathCellLookup()
+    private void GenerateWallsImmediately()
     {
-        Dictionary<CellCoord, MazeBoardGenerator.CellRecord> pathCells =
-            new Dictionary<CellCoord, MazeBoardGenerator.CellRecord>();
+        InitializeRandom();
+        ClearGeneratedWalls();
+        CreateSharedMaterials();
+        CreateSharedPhysicsMaterial();
+        BuildWallRecordsFromBoard();
 
-        foreach (MazeBoardGenerator.CellRecord record in mazeBoardGenerator.CellTable)
+        if (removeNonCriticalWalls)
         {
-            if (record.kind == MazeBoardGenerator.CellKind.Empty)
+            RemoveOptionalNonCriticalWalls();
+        }
+
+        if (!ValidateOpeningsConnectPathCellsOnly())
+        {
+            Debug.LogWarning("MazeWallsGenerator validation failed. Wall generation was cancelled because one or more openings would expose an unused or out-of-board cell.");
+            generatedWallRecords.Clear();
+            wallByEdgeId.Clear();
+            return;
+        }
+
+        RenderWalls();
+
+        status = "walls ready";
+        Debug.Log("walls ready");
+    }
+
+    private void InitializeRandom()
+    {
+        int seed = randomizeWallSeed ? Environment.TickCount : wallRandomSeed;
+        wallRandom = new System.Random(seed);
+    }
+
+    private void BuildWallRecordsFromBoard()
+    {
+        generatedWallRecords.Clear();
+        wallByEdgeId.Clear();
+
+        IReadOnlyList<MazeBoardGenerator.MazeCellRecord> cells = boardSource.GeneratedCells;
+        Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord> cellLookup = BuildCellLookup(cells);
+
+        for (int i = 0; i < cells.Count; i++)
+        {
+            MazeBoardGenerator.MazeCellRecord cell = cells[i];
+
+            if (!IsPathCell(cell))
             {
                 continue;
             }
 
-            CellCoord coord = new CellCoord(record.column, record.row);
-            pathCells[coord] = record;
+            GridPosition sourcePosition = new GridPosition(cell.Column, cell.Row);
+            TryAddWallForEdge(sourcePosition, WallDirection.North, cellLookup);
+            TryAddWallForEdge(sourcePosition, WallDirection.East, cellLookup);
+            TryAddWallForEdge(sourcePosition, WallDirection.South, cellLookup);
+            TryAddWallForEdge(sourcePosition, WallDirection.West, cellLookup);
         }
-
-        return pathCells;
     }
 
-    private List<WallData> BuildWallData(Dictionary<CellCoord, MazeBoardGenerator.CellRecord> pathCells)
+    private Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord> BuildCellLookup(
+        IReadOnlyList<MazeBoardGenerator.MazeCellRecord> cells)
     {
-        List<WallData> walls = new List<WallData>();
-        HashSet<string> usedEdges = new HashSet<string>();
+        Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord> lookup =
+            new Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord>(cells.Count);
 
-        foreach (KeyValuePair<CellCoord, MazeBoardGenerator.CellRecord> item in pathCells)
+        for (int i = 0; i < cells.Count; i++)
         {
-            CellCoord cell = item.Key;
-            MazeBoardGenerator.CellRecord record = item.Value;
-
-            if (record.isIntersection)
-            {
-                continue;
-            }
-
-            AddWallIfOuterEdge(cell, WallDirection.North, pathCells, usedEdges, walls);
-            AddWallIfOuterEdge(cell, WallDirection.East, pathCells, usedEdges, walls);
-            AddWallIfOuterEdge(cell, WallDirection.South, pathCells, usedEdges, walls);
-            AddWallIfOuterEdge(cell, WallDirection.West, pathCells, usedEdges, walls);
+            MazeBoardGenerator.MazeCellRecord cell = cells[i];
+            lookup[new GridPosition(cell.Column, cell.Row)] = cell;
         }
 
-        return walls;
+        return lookup;
     }
 
-    private void AddWallIfOuterEdge(
-        CellCoord cell,
+    private void TryAddWallForEdge(
+        GridPosition sourcePosition,
         WallDirection direction,
-        Dictionary<CellCoord, MazeBoardGenerator.CellRecord> pathCells,
-        HashSet<string> usedEdges,
-        List<WallData> walls)
+        Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord> cellLookup)
     {
-        CellCoord neighbor = GetNeighbor(cell, direction);
+        GridPosition neighborPosition = GetNeighbor(sourcePosition, direction);
+        bool neighborInsideBoard = IsInsideBoard(neighborPosition);
+        bool neighborIsPathCell = false;
 
-        if (pathCells.ContainsKey(neighbor))
+        if (neighborInsideBoard && cellLookup.TryGetValue(neighborPosition, out MazeBoardGenerator.MazeCellRecord neighborCell))
+        {
+            neighborIsPathCell = IsPathCell(neighborCell);
+        }
+
+        if (neighborIsPathCell)
         {
             return;
         }
 
-        string edgeKey = BuildEdgeKey(cell, direction);
+        string edgeId = GetEdgeId(sourcePosition, direction);
 
-        if (usedEdges.Contains(edgeKey))
+        if (wallByEdgeId.ContainsKey(edgeId))
         {
             return;
         }
 
-        usedEdges.Add(edgeKey);
-        walls.Add(CreateWallData(cell, direction));
-    }
+        bool protectsUnusedCell = neighborInsideBoard;
+        bool isBoundaryWall = !neighborInsideBoard;
 
-    private CellCoord GetNeighbor(CellCoord cell, WallDirection direction)
-    {
-        if (direction == WallDirection.North)
+        WallRecord wallRecord = new WallRecord
         {
-            return new CellCoord(cell.Column, cell.Row + 1);
-        }
-
-        if (direction == WallDirection.East)
-        {
-            return new CellCoord(cell.Column + 1, cell.Row);
-        }
-
-        if (direction == WallDirection.South)
-        {
-            return new CellCoord(cell.Column, cell.Row - 1);
-        }
-
-        return new CellCoord(cell.Column - 1, cell.Row);
-    }
-
-    private string BuildEdgeKey(CellCoord cell, WallDirection direction)
-    {
-        int columnA = cell.Column;
-        int rowA = cell.Row;
-        int columnB = cell.Column;
-        int rowB = cell.Row;
-
-        if (direction == WallDirection.North)
-        {
-            rowB += 1;
-        }
-        else if (direction == WallDirection.East)
-        {
-            columnB += 1;
-        }
-        else if (direction == WallDirection.South)
-        {
-            rowA -= 1;
-        }
-        else
-        {
-            columnA -= 1;
-        }
-
-        int minColumn = Mathf.Min(columnA, columnB);
-        int maxColumn = Mathf.Max(columnA, columnB);
-        int minRow = Mathf.Min(rowA, rowB);
-        int maxRow = Mathf.Max(rowA, rowB);
-
-        return $"{minColumn}:{minRow}:{maxColumn}:{maxRow}";
-    }
-
-    private WallData CreateWallData(CellCoord cell, WallDirection direction)
-    {
-        MazeBoardGenerator.CellRecord record = FindRecord(cell);
-        Vector3 position = new Vector3(record.worldX, wallVerticalOffset + wallHeight * 0.5f, record.worldZ);
-        Vector3 scale = Vector3.one;
-
-        if (direction == WallDirection.North)
-        {
-            position.z += cellSize * 0.5f;
-            scale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
-        }
-        else if (direction == WallDirection.East)
-        {
-            position.x += cellSize * 0.5f;
-            scale = new Vector3(wallWidth, wallHeight, cellSize + wallWidth);
-        }
-        else if (direction == WallDirection.South)
-        {
-            position.z -= cellSize * 0.5f;
-            scale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
-        }
-        else
-        {
-            position.x -= cellSize * 0.5f;
-            scale = new Vector3(wallWidth, wallHeight, cellSize + wallWidth);
-        }
-
-        return new WallData
-        {
-            Cell = cell,
+            EdgeId = edgeId,
+            SourceCell = sourcePosition,
             Direction = direction,
-            Position = position,
-            Scale = scale
+            IsBoundaryWall = isBoundaryWall,
+            ProtectsUnusedCell = protectsUnusedCell,
+            ColorId = ChooseWallColor(sourcePosition, direction)
         };
+
+        AssignWallTransform(wallRecord);
+        wallByEdgeId.Add(edgeId, wallRecord);
+        generatedWallRecords.Add(wallRecord);
     }
 
-    private MazeBoardGenerator.CellRecord FindRecord(CellCoord coord)
+    private void RemoveOptionalNonCriticalWalls()
     {
-        foreach (MazeBoardGenerator.CellRecord record in mazeBoardGenerator.CellTable)
+        List<WallRecord> removableWalls = new List<WallRecord>();
+
+        for (int i = 0; i < generatedWallRecords.Count; i++)
         {
-            if (record.column == coord.Column && record.row == coord.Row)
+            WallRecord wall = generatedWallRecords[i];
+
+            if (IsNonCriticalInternalWall(wall))
             {
-                return record;
+                removableWalls.Add(wall);
+            }
+        }
+
+        if (removableWalls.Count == 0)
+        {
+            return;
+        }
+
+        int maxRemovalCount = Mathf.FloorToInt(generatedWallRecords.Count * maxNonCriticalWallRemovalRatio);
+        maxRemovalCount = Mathf.Clamp(maxRemovalCount, 0, removableWalls.Count);
+
+        Shuffle(removableWalls);
+
+        int removedCount = 0;
+        for (int i = 0; i < removableWalls.Count && removedCount < maxRemovalCount; i++)
+        {
+            WallRecord candidate = removableWalls[i];
+
+            if (!CanSafelyRemoveWall(candidate))
+            {
+                continue;
+            }
+
+            generatedWallRecords.Remove(candidate);
+            wallByEdgeId.Remove(candidate.EdgeId);
+            removedCount++;
+        }
+    }
+
+    private bool IsNonCriticalInternalWall(WallRecord wall)
+    {
+        if (wall.IsBoundaryWall)
+        {
+            return false;
+        }
+
+        if (wall.ProtectsUnusedCell)
+        {
+            return false;
+        }
+
+        GridPosition neighbor = GetNeighbor(wall.SourceCell, wall.Direction);
+        return IsInsideBoard(wall.SourceCell) && IsInsideBoard(neighbor);
+    }
+
+    private bool CanSafelyRemoveWall(WallRecord wall)
+    {
+        if (wall.IsBoundaryWall || wall.ProtectsUnusedCell)
+        {
+            return false;
+        }
+
+        GridPosition neighbor = GetNeighbor(wall.SourceCell, wall.Direction);
+
+        if (!IsInsideBoard(neighbor))
+        {
+            return false;
+        }
+
+        MazeBoardGenerator.MazeCellRecord sourceCell = FindBoardCell(wall.SourceCell);
+        MazeBoardGenerator.MazeCellRecord neighborCell = FindBoardCell(neighbor);
+
+        return sourceCell != null && neighborCell != null && IsPathCell(sourceCell) && IsPathCell(neighborCell);
+    }
+
+    private bool ValidateOpeningsConnectPathCellsOnly()
+    {
+        IReadOnlyList<MazeBoardGenerator.MazeCellRecord> cells = boardSource.GeneratedCells;
+        Dictionary<GridPosition, MazeBoardGenerator.MazeCellRecord> cellLookup = BuildCellLookup(cells);
+
+        for (int i = 0; i < cells.Count; i++)
+        {
+            MazeBoardGenerator.MazeCellRecord cell = cells[i];
+
+            if (!IsPathCell(cell))
+            {
+                continue;
+            }
+
+            GridPosition sourcePosition = new GridPosition(cell.Column, cell.Row);
+            WallDirection[] directions =
+            {
+                WallDirection.North,
+                WallDirection.East,
+                WallDirection.South,
+                WallDirection.West
+            };
+
+            for (int directionIndex = 0; directionIndex < directions.Length; directionIndex++)
+            {
+                WallDirection direction = directions[directionIndex];
+                string edgeId = GetEdgeId(sourcePosition, direction);
+
+                if (wallByEdgeId.ContainsKey(edgeId))
+                {
+                    continue;
+                }
+
+                GridPosition neighborPosition = GetNeighbor(sourcePosition, direction);
+
+                if (!IsInsideBoard(neighborPosition))
+                {
+                    continue;
+                }
+
+                if (!cellLookup.TryGetValue(neighborPosition, out MazeBoardGenerator.MazeCellRecord neighborCell))
+                {
+                    return false;
+                }
+
+                if (!IsPathCell(neighborCell))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private void RenderWalls()
+    {
+        GameObject parentObject = new GameObject(generatedParentName);
+        parentObject.transform.SetParent(transform, false);
+
+        for (int i = 0; i < generatedWallRecords.Count; i++)
+        {
+            WallRecord wall = generatedWallRecords[i];
+
+            GameObject wallObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wallObject.name = $"Wall {wall.EdgeId} - {wall.Direction} - Cell [{wall.SourceCell.Column}, {wall.SourceCell.Row}]";
+            wallObject.transform.SetParent(parentObject.transform, false);
+            wallObject.transform.position = wall.WorldPosition;
+            wallObject.transform.rotation = wall.WorldRotation;
+            wallObject.transform.localScale = wall.LocalScale;
+
+            MeshRenderer renderer = wallObject.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = GetSharedMaterial(wall.ColorId);
+            }
+
+            Collider wallCollider = wallObject.GetComponent<Collider>();
+            if (wallCollider != null)
+            {
+                wallCollider.enabled = collidersEnabled;
+                wallCollider.sharedMaterial = sharedWallPhysicsMaterial;
+            }
+        }
+    }
+
+    private void AssignWallTransform(WallRecord wall)
+    {
+        float cellSize = boardSource.CellSize;
+        Vector3 sourceWorld = GridToWorld(wall.SourceCell.Column, wall.SourceCell.Row);
+        float y = boardSurfaceY + wallHeight * 0.5f;
+
+        switch (wall.Direction)
+        {
+            case WallDirection.North:
+                wall.WorldPosition = new Vector3(sourceWorld.x, y, sourceWorld.z + cellSize * 0.5f);
+                wall.WorldRotation = Quaternion.identity;
+                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                break;
+
+            case WallDirection.South:
+                wall.WorldPosition = new Vector3(sourceWorld.x, y, sourceWorld.z - cellSize * 0.5f);
+                wall.WorldRotation = Quaternion.identity;
+                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                break;
+
+            case WallDirection.West:
+                wall.WorldPosition = new Vector3(sourceWorld.x - cellSize * 0.5f, y, sourceWorld.z);
+                wall.WorldRotation = Quaternion.Euler(0f, 90f, 0f);
+                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                break;
+
+            case WallDirection.East:
+                wall.WorldPosition = new Vector3(sourceWorld.x + cellSize * 0.5f, y, sourceWorld.z);
+                wall.WorldRotation = Quaternion.Euler(0f, 90f, 0f);
+                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                break;
+        }
+    }
+
+    private Vector3 GridToWorld(int column, int row)
+    {
+        float worldX = (column - (boardSource.Columns - 1) * 0.5f) * boardSource.CellSize;
+        float worldZ = ((boardSource.Rows - 1) * 0.5f - row) * boardSource.CellSize;
+        return new Vector3(worldX, boardSurfaceY, worldZ);
+    }
+
+    private string GetEdgeId(GridPosition sourcePosition, WallDirection direction)
+    {
+        switch (direction)
+        {
+            case WallDirection.North:
+                return $"H:{sourcePosition.Column}:{sourcePosition.Row}";
+
+            case WallDirection.South:
+                return $"H:{sourcePosition.Column}:{sourcePosition.Row + 1}";
+
+            case WallDirection.West:
+                return $"V:{sourcePosition.Column}:{sourcePosition.Row}";
+
+            case WallDirection.East:
+                return $"V:{sourcePosition.Column + 1}:{sourcePosition.Row}";
+
+            default:
+                return $"Unknown:{sourcePosition.Column}:{sourcePosition.Row}:{direction}";
+        }
+    }
+
+    private GridPosition GetNeighbor(GridPosition sourcePosition, WallDirection direction)
+    {
+        switch (direction)
+        {
+            case WallDirection.North:
+                return new GridPosition(sourcePosition.Column, sourcePosition.Row - 1);
+
+            case WallDirection.East:
+                return new GridPosition(sourcePosition.Column + 1, sourcePosition.Row);
+
+            case WallDirection.South:
+                return new GridPosition(sourcePosition.Column, sourcePosition.Row + 1);
+
+            case WallDirection.West:
+                return new GridPosition(sourcePosition.Column - 1, sourcePosition.Row);
+
+            default:
+                return sourcePosition;
+        }
+    }
+
+    private bool IsInsideBoard(GridPosition position)
+    {
+        return boardSource != null &&
+               position.Column >= 0 &&
+               position.Column < boardSource.Columns &&
+               position.Row >= 0 &&
+               position.Row < boardSource.Rows;
+    }
+
+    private bool IsPathCell(MazeBoardGenerator.MazeCellRecord cell)
+    {
+        if (cell == null)
+        {
+            return false;
+        }
+
+        return cell.CellType == MazeBoardGenerator.MazeCellType.MainPath ||
+               cell.CellType == MazeBoardGenerator.MazeCellType.FalsePath ||
+               cell.CellType == MazeBoardGenerator.MazeCellType.Intersection ||
+               cell.CellType == MazeBoardGenerator.MazeCellType.Entrance ||
+               cell.CellType == MazeBoardGenerator.MazeCellType.Exit;
+    }
+
+    private MazeBoardGenerator.MazeCellRecord FindBoardCell(GridPosition position)
+    {
+        IReadOnlyList<MazeBoardGenerator.MazeCellRecord> cells = boardSource.GeneratedCells;
+
+        for (int i = 0; i < cells.Count; i++)
+        {
+            MazeBoardGenerator.MazeCellRecord cell = cells[i];
+
+            if (cell.Column == position.Column && cell.Row == position.Row)
+            {
+                return cell;
             }
         }
 
         return null;
     }
 
-    private void RemoveRandomWallData(List<WallData> walls)
+    private WallColorId ChooseWallColor(GridPosition sourcePosition, WallDirection direction)
     {
-        int removeCount = Mathf.RoundToInt(walls.Count * wallRemovalPercent);
+        int value = Mathf.Abs(sourcePosition.Column * 31 + sourcePosition.Row * 17 + (int)direction * 13);
+        return (WallColorId)(value % 7);
+    }
 
-        for (int i = 0; i < removeCount && walls.Count > 0; i++)
+    private void Shuffle<T>(List<T> list)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
         {
-            int index = random.Next(0, walls.Count);
-            walls.RemoveAt(index);
+            int swapIndex = wallRandom.Next(i + 1);
+            (list[i], list[swapIndex]) = (list[swapIndex], list[i]);
         }
     }
 
-    private void RenderWalls(List<WallData> walls)
+    private void CreateSharedMaterials()
     {
-        GameObject rootObject = new GameObject(generatedRootName);
-        rootObject.transform.SetParent(transform, false);
-        generatedRoot = rootObject.transform;
+        yellowMaterial = CreateMaterial("Maze Wall Yellow", yellowWallColor);
+        azureMaterial = CreateMaterial("Maze Wall Azure", azureWallColor);
+        magentaMaterial = CreateMaterial("Maze Wall Magenta", magentaWallColor);
+        limeMaterial = CreateMaterial("Maze Wall Lime", limeWallColor);
+        violetMaterial = CreateMaterial("Maze Wall Violet", violetWallColor);
+        pinkMaterial = CreateMaterial("Maze Wall Pink", pinkWallColor);
+        greenMaterial = CreateMaterial("Maze Wall Green", greenWallColor);
+    }
 
-        for (int i = 0; i < walls.Count; i++)
+    private Material CreateMaterial(string materialName, Color color)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+
+        if (shader == null)
         {
-            WallData wallData = walls[i];
-            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wall.name = $"Wall {i} [{wallData.Cell.Column}, {wallData.Cell.Row}] {wallData.Direction}";
-            wall.transform.SetParent(generatedRoot, false);
-            wall.transform.position = wallData.Position;
-            wall.transform.localScale = wallData.Scale;
-
-            Renderer renderer = wall.GetComponent<Renderer>();
-            renderer.sharedMaterial = CreateWallMaterial(GetRandomWallColor());
-
-            Collider collider = wall.GetComponent<Collider>();
-            collider.material = wallPhysicsMaterial;
+            shader = Shader.Find("Standard");
         }
-    }
 
-    private Color GetRandomWallColor()
-    {
-        return wallColors[random.Next(0, wallColors.Length)];
-    }
-
-    private Material CreateWallMaterial(Color color)
-    {
-        Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        Material material = new Material(shader);
+        material.name = materialName;
         material.color = color;
         return material;
     }
 
-    private void CreateWallPhysicsMaterial()
+    private Material GetSharedMaterial(WallColorId colorId)
     {
-        wallPhysicsMaterial = new PhysicsMaterial("Maze Wall Physics");
-        wallPhysicsMaterial.bounciness = bounciness;
-        wallPhysicsMaterial.dynamicFriction = dynamicFriction;
-        wallPhysicsMaterial.staticFriction = staticFriction;
-        wallPhysicsMaterial.bounceCombine = PhysicsMaterialCombine.Maximum;
-        wallPhysicsMaterial.frictionCombine = PhysicsMaterialCombine.Average;
+        switch (colorId)
+        {
+            case WallColorId.Yellow:
+                return yellowMaterial;
+
+            case WallColorId.Azure:
+                return azureMaterial;
+
+            case WallColorId.Magenta:
+                return magentaMaterial;
+
+            case WallColorId.Lime:
+                return limeMaterial;
+
+            case WallColorId.Violet:
+                return violetMaterial;
+
+            case WallColorId.Pink:
+                return pinkMaterial;
+
+            case WallColorId.Green:
+                return greenMaterial;
+
+            default:
+                return greenMaterial;
+        }
     }
 
-    private void ClearGeneratedWalls()
+    private void CreateSharedPhysicsMaterial()
     {
-        Transform existing = transform.Find(generatedRootName);
-
-        if (existing == null)
+        sharedWallPhysicsMaterial = new PhysicsMaterial("Maze Wall Physics")
         {
-            return;
-        }
-
-        if (Application.isPlaying)
-        {
-            Destroy(existing.gameObject);
-        }
-        else
-        {
-            DestroyImmediate(existing.gameObject);
-        }
-    }
-
-    private void OnValidate()
-    {
-        wallRemovalPercent = Mathf.Clamp01(wallRemovalPercent);
-        cellSize = Mathf.Max(0.1f, cellSize);
-        wallWidth = Mathf.Max(0.01f, wallWidth);
-        wallHeight = Mathf.Max(0.1f, wallHeight);
-        bounciness = Mathf.Clamp01(bounciness);
-        dynamicFriction = Mathf.Clamp01(dynamicFriction);
-        staticFriction = Mathf.Clamp01(staticFriction);
-        boardReadyWaitTime = Mathf.Max(0f, boardReadyWaitTime);
+            bounciness = bounciness,
+            dynamicFriction = dynamicFriction,
+            staticFriction = staticFriction,
+            frictionCombine = frictionCombine,
+            bounceCombine = bounceCombine
+        };
     }
 }
