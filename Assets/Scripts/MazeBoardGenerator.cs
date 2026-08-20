@@ -236,7 +236,7 @@ public class MazeBoardGenerator : MonoBehaviour
 
     private void InitializeRandom()
     {
-        int seed = randomizeSeed ? Environment.TickCount : randomSeed;
+        int seed = randomizeSeed ? Guid.NewGuid().GetHashCode() ^ Environment.TickCount : randomSeed;
         rng = new System.Random(seed);
     }
 

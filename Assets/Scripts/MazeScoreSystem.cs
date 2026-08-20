@@ -160,6 +160,7 @@ public class MazeScoreSystem : MonoBehaviour
         if (gameSystem != null && gameSystem.CurrentState == MazeGameSystem.MazeGameState.Playing)
         {
             SamplePlayerDistance();
+            CalculateLiveScore();
         }
 
         if (gameSystem != null &&
@@ -533,6 +534,36 @@ public class MazeScoreSystem : MonoBehaviour
         }
     }
 
+    private void CalculateLiveScore()
+    {
+        if (!hasCalculatedOptimalRoute)
+        {
+            return;
+        }
+
+        float currentTime = gameSystem != null ? gameSystem.ElapsedTime : 0f;
+        float optimalDistance = Mathf.Max(0.0001f, optimalRouteWorldDistance);
+        float measuredDistance = Mathf.Max(optimalDistance, playerTravelDistance);
+
+        finalRouteEfficiency = optimalDistance / measuredDistance;
+        if (clampEfficiencyToOne)
+        {
+            finalRouteEfficiency = Mathf.Clamp01(finalRouteEfficiency);
+        }
+
+        float expectedOptimalTime = Mathf.Max(1f, optimalRouteSteps * expectedSecondsPerOptimalStep);
+        float timeEfficiency = Mathf.Clamp01(expectedOptimalTime / Mathf.Max(expectedOptimalTime, currentTime));
+
+        float inefficiency = 1f - finalRouteEfficiency;
+        float timePenalty = currentTime * timePenaltyPerSecond;
+        float routePenalty = inefficiency * routeInefficiencyPenalty;
+
+        finalScore = baseScore * timeEfficiency - timePenalty - routePenalty;
+        finalScore = Mathf.Max(minimumScore, finalScore);
+
+        UpdateScoreDisplay();
+    }
+
     private void FinalizeScore()
     {
         if (!hasCalculatedOptimalRoute)
@@ -540,28 +571,9 @@ public class MazeScoreSystem : MonoBehaviour
             CalculateOptimalRoute();
         }
 
+        CalculateLiveScore();
+
         finalCompletionTime = gameSystem != null ? gameSystem.FinalCompletionTime : 0f;
-
-        float optimalDistance = Mathf.Max(0.0001f, optimalRouteWorldDistance);
-        float measuredDistance = Mathf.Max(optimalDistance, playerTravelDistance);
-
-        finalRouteEfficiency = optimalDistance / measuredDistance;
-
-        if (clampEfficiencyToOne)
-        {
-            finalRouteEfficiency = Mathf.Clamp01(finalRouteEfficiency);
-        }
-
-        float expectedOptimalTime = Mathf.Max(1f, optimalRouteSteps * expectedSecondsPerOptimalStep);
-        float timeEfficiency = Mathf.Clamp01(expectedOptimalTime / Mathf.Max(expectedOptimalTime, finalCompletionTime));
-
-        float inefficiency = 1f - finalRouteEfficiency;
-        float timePenalty = finalCompletionTime * timePenaltyPerSecond;
-        float routePenalty = inefficiency * routeInefficiencyPenalty;
-
-        finalScore = baseScore * timeEfficiency - timePenalty - routePenalty;
-        finalScore = Mathf.Max(minimumScore, finalScore);
-
         hasFinishedScoring = true;
         status = "score finished";
 
@@ -582,29 +594,23 @@ public class MazeScoreSystem : MonoBehaviour
 
     private string GetScoreDisplayText()
     {
-        if (showScoreOnlyAfterFinish && !hasFinishedScoring)
-        {
-            return "";
-        }
-
         return scorePrefix + Mathf.RoundToInt(finalScore);
     }
 
     private string GetDetailsDisplayText()
     {
-        if (showScoreOnlyAfterFinish && !hasFinishedScoring)
-        {
-            return "";
-        }
+        float currentTime = hasFinishedScoring 
+            ? finalCompletionTime 
+            : (gameSystem != null ? gameSystem.ElapsedTime : 0f);
 
         return detailsPrefix +
                (finalRouteEfficiency * 100f).ToString("0.0") +
                "% | Optimal: " +
-               optimalRouteSteps +
+               (optimalRouteSteps >= 0 ? optimalRouteSteps.ToString() : "N/A") +
                " steps | Distance: " +
-               playerTravelDistance.ToString("0.0") +
+               playerTravelDistance.ToString("0.1") +
                " units | Time: " +
-               FormatTime(finalCompletionTime);
+               FormatTime(currentTime);
     }
 
     private Vector3 GetPlayerPosition()
