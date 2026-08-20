@@ -73,7 +73,7 @@ public class MazeBoardGenerator : MonoBehaviour
         Pink
     }
 
-    private readonly struct GridPosition : IEquatable<GridPosition>
+    public readonly struct GridPosition : IEquatable<GridPosition>
     {
         public readonly int Column;
         public readonly int Row;
@@ -166,6 +166,8 @@ public class MazeBoardGenerator : MonoBehaviour
     private MutableCellState[,] cellStates;
     private Transform generatedParent;
     private System.Random rng;
+    private GridPosition entranceCell;
+    private GridPosition exitCell;
 
     public IReadOnlyList<MazeCellRecord> GeneratedCells => generatedCells;
     public string Status => status;
@@ -173,8 +175,16 @@ public class MazeBoardGenerator : MonoBehaviour
     public int Rows => rows;
     public float CellSize => cellSize;
 
-    private GridPosition EntranceCell => new GridPosition(0, rows / 2);
-    private GridPosition ExitCell => new GridPosition(columns - 1, rows / 2);
+    public GridPosition EntranceCell => entranceCell;
+    public GridPosition ExitCell => exitCell;
+
+    public Vector3 EntranceWorldPosition => GridToWorld(entranceCell.Column, entranceCell.Row);
+    public Vector3 ExitWorldPosition => GridToWorld(exitCell.Column, exitCell.Row);
+
+    public GridPosition GetEntranceCell() => entranceCell;
+    public GridPosition GetExitCell() => exitCell;
+    public Vector3 GetEntranceWorldPosition() => EntranceWorldPosition;
+    public Vector3 GetExitWorldPosition() => ExitWorldPosition;
 
     private void Start()
     {
@@ -206,6 +216,7 @@ public class MazeBoardGenerator : MonoBehaviour
     public void GenerateBoard()
     {
         InitializeRandom();
+        SelectRandomEntranceAndExit();
         ClearGeneratedBoard();
         CreateEmptyCellTable();
         RouteMainPath();
@@ -215,6 +226,41 @@ public class MazeBoardGenerator : MonoBehaviour
 
         status = "board ready";
         Debug.Log("board ready");
+    }
+
+    private void SelectRandomEntranceAndExit()
+    {
+        // Pick entrance on left border (Column 0, random row)
+        int entranceRow = rng != null ? rng.Next(0, rows) : rows / 2;
+        entranceCell = new GridPosition(0, entranceRow);
+
+        // Pick exit on right, top, or bottom border ensuring a good distance from entrance
+        List<GridPosition> possibleExits = new List<GridPosition>();
+
+        // Right edge
+        for (int r = 0; r < rows; r++)
+        {
+            possibleExits.Add(new GridPosition(columns - 1, r));
+        }
+        // Top edge
+        for (int c = 1; c < columns - 1; c++)
+        {
+            possibleExits.Add(new GridPosition(c, 0));
+        }
+        // Bottom edge
+        for (int c = 1; c < columns - 1; c++)
+        {
+            possibleExits.Add(new GridPosition(c, rows - 1));
+        }
+
+        // Filter exits to ensure a minimum distance from entrance for challenging gameplay
+        List<GridPosition> validExits = possibleExits.FindAll(pos => ManhattanDistance(entranceCell, pos) >= (columns + rows) / 2);
+        if (validExits.Count == 0)
+        {
+            validExits = possibleExits;
+        }
+
+        exitCell = rng != null ? validExits[rng.Next(validExits.Count)] : new GridPosition(columns - 1, rows / 2);
     }
 
     [ContextMenu("Clear Generated Board")]
