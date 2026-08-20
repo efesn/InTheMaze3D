@@ -535,25 +535,25 @@ public class MazeWallsGenerator : MonoBehaviour
             case WallDirection.North:
                 wall.WorldPosition = new Vector3(sourceWorld.x, y, sourceWorld.z + cellSize * 0.5f);
                 wall.WorldRotation = Quaternion.identity;
-                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                wall.LocalScale = new Vector3(cellSize, wallHeight, wallWidth);
                 break;
 
             case WallDirection.South:
                 wall.WorldPosition = new Vector3(sourceWorld.x, y, sourceWorld.z - cellSize * 0.5f);
                 wall.WorldRotation = Quaternion.identity;
-                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                wall.LocalScale = new Vector3(cellSize, wallHeight, wallWidth);
                 break;
 
             case WallDirection.West:
                 wall.WorldPosition = new Vector3(sourceWorld.x - cellSize * 0.5f, y, sourceWorld.z);
                 wall.WorldRotation = Quaternion.Euler(0f, 90f, 0f);
-                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                wall.LocalScale = new Vector3(cellSize, wallHeight, wallWidth);
                 break;
 
             case WallDirection.East:
                 wall.WorldPosition = new Vector3(sourceWorld.x + cellSize * 0.5f, y, sourceWorld.z);
                 wall.WorldRotation = Quaternion.Euler(0f, 90f, 0f);
-                wall.LocalScale = new Vector3(cellSize + wallWidth, wallHeight, wallWidth);
+                wall.LocalScale = new Vector3(cellSize, wallHeight, wallWidth);
                 break;
         }
     }
