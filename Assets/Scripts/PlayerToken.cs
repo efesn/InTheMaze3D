@@ -11,63 +11,63 @@ public class PlayerToken : MonoBehaviour
         Accelerate
     }
 
-    [Header("References")]
+    [Header("References & Detection")]
     [SerializeField] private MazeBoardGenerator boardSource;
-    [SerializeField] private MazeWallsGenerator wallsSource;
+    [SerializeField] private UnityEngine.Object combinedBoardSource;
     [SerializeField] private bool autoFindBoardSource = true;
-    [SerializeField] private bool autoFindWallsSource = true;
     [SerializeField] private bool createOnStart = true;
+    [SerializeField] private bool debugLogging = true;
 
-    [Header("Token Geometry")]
+    [Header("Character Geometry & Scale")]
     [SerializeField] private string tokenObjectName = "Player Token";
-    [SerializeField, Min(0.05f)] private float tokenDiameter = 0.6f;
-    [SerializeField] private float tokenCenterY = 0.6f;
+    [SerializeField, Min(0.05f)] private float characterScale = 1f;
+    [SerializeField] private float spawnHeight = 0.6f;
 
-    [Header("Input")]
+    [Header("Movement & Controls")]
+    [SerializeField] private MovementMode movementMode = MovementMode.SetVelocity;
+    [SerializeField, Min(0f)] private float movementSpeed = 5f;
+    [SerializeField, Min(0f)] private float acceleration = 30f;
+    [SerializeField, Min(0f)] private float rotationSpeed = 14f;
+    [SerializeField] private bool normalizeDiagonalInput = true;
     [SerializeField] private KeyCode upKey = KeyCode.UpArrow;
     [SerializeField] private KeyCode downKey = KeyCode.DownArrow;
     [SerializeField] private KeyCode leftKey = KeyCode.LeftArrow;
     [SerializeField] private KeyCode rightKey = KeyCode.RightArrow;
     [SerializeField] private bool inputEnabled = true;
 
-    [Header("Movement")]
-    [SerializeField] private MovementMode movementMode = MovementMode.SetVelocity;
-    [SerializeField, Min(0f)] private float movementSpeed = 4f;
-    [SerializeField, Min(0f)] private float acceleration = 24f;
-    [SerializeField] private bool normalizeDiagonalInput = true;
-
-    [Header("Physics")]
+    [Header("Physics Settings")]
     [SerializeField, Min(0f)] private float linearDamping = 1.5f;
     [SerializeField, Min(0f)] private float angularDamping = 4f;
     [SerializeField, Range(0f, 1f)] private float bounciness = 0.9f;
     [SerializeField, Range(0f, 1f)] private float dynamicFriction = 0.2f;
     [SerializeField, Range(0f, 1f)] private float staticFriction = 0.2f;
-    [SerializeField] private PhysicsMaterialCombine frictionCombine = PhysicsMaterialCombine.Average;
-    [SerializeField] private PhysicsMaterialCombine bounceCombine = PhysicsMaterialCombine.Maximum;
+    [SerializeField] private PhysicsMaterial CombinePhysicsMaterial;
     [SerializeField] private CollisionDetectionMode collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
     [SerializeField] private RigidbodyInterpolation interpolation = RigidbodyInterpolation.Interpolate;
     [SerializeField] private bool freezeRotation = true;
 
-    [Header("Material / Texture Settings")]
-    [SerializeField] private Texture2D tokenTexture;
-    [SerializeField] private bool generateFallbackCircleTexture = true;
-    [SerializeField, Min(32)] private int generatedTextureSize = 256;
-    [SerializeField] private Color tokenBaseColor = Color.white;
-    [SerializeField] private Color circlePatternColor = Color.black;
-    [SerializeField, Range(0.005f, 0.08f)] private float circleLineWidth = 0.018f;
-    [SerializeField, Range(0.15f, 0.9f)] private float circleRadius = 0.32f;
-    [SerializeField, Range(0f, 1f)] private float smoothness = 0.35f;
+    [Header("Visual Colors & Materials")]
+    [SerializeField] private Color bodyColor = new Color(0.92f, 0.93f, 0.95f, 1f); // White / Light Grey
+    [SerializeField] private Color headColor = new Color(0.2f, 0.22f, 0.25f, 1f); // Dark Gray
+    [SerializeField] private Color eyeColor = new Color(0.1f, 0.8f, 1f, 1f); // Cyan / Blue Glow
+    [SerializeField] private Color detailColor = new Color(0.15f, 0.45f, 0.95f, 1f); // Accent Blue
+
+    [SerializeField] private Material customBodyMaterial;
+    [SerializeField] private Material customHeadMaterial;
+    [SerializeField] private Material customEyeMaterial;
+    [SerializeField] private Material customDetailMaterial;
 
     [SerializeField, HideInInspector] private string status = "not generated";
 
     private Transform playerTransform;
-    private Rigidbody tokenRigidbody;
-    private SphereCollider tokenCollider;
-    private Material tokenMaterial;
-    private PhysicsMaterial tokenPhysicsMaterial;
+    private Rigidbody playerRigidbody;
+    private CapsuleCollider rootCollider;
+    private PhysicsMaterial defaultPhysicsMaterial;
     private Vector3 inputDirection;
+    private Quaternion targetRotation;
 
     public Transform PlayerTransform => playerTransform;
+    public Rigidbody PlayerRigidbody => playerRigidbody;
     public string Status => status;
 
     private void Start()
@@ -90,7 +90,7 @@ public class PlayerToken : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!Application.isPlaying || tokenRigidbody == null || playerTransform == null)
+        if (!Application.isPlaying || playerRigidbody == null || playerTransform == null)
         {
             return;
         }
@@ -104,16 +104,17 @@ public class PlayerToken : MonoBehaviour
         }
 
         ApplyMovement(inputDirection);
+        ApplyRotation(inputDirection);
     }
 
     private void OnValidate()
     {
-        tokenDiameter = Mathf.Max(0.05f, tokenDiameter);
+        characterScale = Mathf.Max(0.05f, characterScale);
         movementSpeed = Mathf.Max(0f, movementSpeed);
         acceleration = Mathf.Max(0f, acceleration);
+        rotationSpeed = Mathf.Max(0f, rotationSpeed);
         linearDamping = Mathf.Max(0f, linearDamping);
         angularDamping = Mathf.Max(0f, angularDamping);
-        generatedTextureSize = Mathf.Max(32, generatedTextureSize);
     }
 
     [ContextMenu("Create Token")]
@@ -122,19 +123,28 @@ public class PlayerToken : MonoBehaviour
         ResolveReferences();
         ClearGeneratedToken();
 
-        GameObject tokenObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        tokenObject.name = tokenObjectName;
-        tokenObject.transform.SetParent(transform, false);
-        tokenObject.transform.position = ResolveEntranceWorldPosition();
-        tokenObject.transform.localScale = Vector3.one * tokenDiameter;
+        Vector3 spawnPos = ResolveEntranceWorldPosition();
 
-        playerTransform = tokenObject.transform;
+        GameObject rootObj = new GameObject(tokenObjectName);
+        rootObj.transform.SetParent(transform, false);
+        rootObj.transform.position = spawnPos;
+        rootObj.transform.rotation = Quaternion.identity;
 
-        ConfigureRendering(tokenObject);
-        ConfigurePhysics(tokenObject);
+        playerTransform = rootObj.transform;
+
+        // Configure Root Collider & Rigidbody
+        ConfigurePhysics(rootObj);
+
+        // Build stylized 3D maze explorer robot from primitives as children
+        BuildRobotVisuals(rootObj);
+
+        targetRotation = rootObj.transform.rotation;
 
         status = "token ready";
-        Debug.Log("token ready");
+        if (debugLogging)
+        {
+            Debug.Log("token ready");
+        }
     }
 
     [ContextMenu("Clear Token")]
@@ -154,8 +164,8 @@ public class PlayerToken : MonoBehaviour
         }
 
         playerTransform = null;
-        tokenRigidbody = null;
-        tokenCollider = null;
+        playerRigidbody = null;
+        rootCollider = null;
         status = "not generated";
     }
 
@@ -170,11 +180,11 @@ public class PlayerToken : MonoBehaviour
         Vector3 entrancePosition = ResolveEntranceWorldPosition();
         playerTransform.position = entrancePosition;
 
-        if (tokenRigidbody != null)
+        if (playerRigidbody != null)
         {
-            tokenRigidbody.linearVelocity = Vector3.zero;
-            tokenRigidbody.angularVelocity = Vector3.zero;
-            tokenRigidbody.position = entrancePosition;
+            playerRigidbody.linearVelocity = Vector3.zero;
+            playerRigidbody.angularVelocity = Vector3.zero;
+            playerRigidbody.position = entrancePosition;
         }
     }
 
@@ -182,10 +192,10 @@ public class PlayerToken : MonoBehaviour
     {
         inputEnabled = enabled;
 
-        if (!enabled && tokenRigidbody != null)
+        if (!enabled && playerRigidbody != null)
         {
-            tokenRigidbody.linearVelocity = Vector3.zero;
-            tokenRigidbody.angularVelocity = Vector3.zero;
+            playerRigidbody.linearVelocity = Vector3.zero;
+            playerRigidbody.angularVelocity = Vector3.zero;
         }
     }
 
@@ -196,133 +206,116 @@ public class PlayerToken : MonoBehaviour
             boardSource = FindFirstObjectByType<MazeBoardGenerator>();
         }
 
-        if (wallsSource == null && autoFindWallsSource)
+        if (combinedBoardSource == null && autoFindBoardSource)
         {
-            wallsSource = FindFirstObjectByType<MazeWallsGenerator>();
-        }
-
-        if (wallsSource == null)
-        {
-            Debug.LogWarning("PlayerToken did not find MazeWallsGenerator. The token will still be created, but wall collision depends on generated wall colliders being present in the scene.");
+            MonoBehaviour[] monos = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+            foreach (MonoBehaviour mono in monos)
+            {
+                if (mono != null && mono.GetType().Name == "MazeCombinedGenerator")
+                {
+                    combinedBoardSource = mono;
+                    break;
+                }
+            }
         }
     }
 
     private Vector3 ResolveEntranceWorldPosition()
     {
+        // 1. Check MazeBoardGenerator
         if (boardSource != null)
         {
-            if (TryGetEntranceWorldPositionFromProperty(out Vector3 propertyPosition))
+            if (TryGetEntranceWorldPositionFromObj(boardSource, out Vector3 boardPos))
             {
-                propertyPosition.y = tokenCenterY;
-                return propertyPosition;
+                boardPos.y = spawnHeight;
+                return boardPos;
             }
-
-            if (TryGetEntranceWorldPositionFromMethod(out Vector3 methodPosition))
-            {
-                methodPosition.y = tokenCenterY;
-                return methodPosition;
-            }
-
-            if (TryGetEntranceCellFromMethod(out int column, out int row))
-            {
-                Vector3 gridPosition = GridToWorld(column, row);
-                gridPosition.y = tokenCenterY;
-                return gridPosition;
-            }
-
-            Debug.LogWarning("PlayerToken could not find MazeBoardGenerator.GetEntranceCell() or MazeBoardGenerator.EntranceWorldPosition. Falling back to the baseline left-middle entrance assumption.");
-            Vector3 fallbackFromBoard = GridToWorld(0, Mathf.Max(0, boardSource.Rows / 2));
-            fallbackFromBoard.y = tokenCenterY;
-            return fallbackFromBoard;
         }
 
-        Debug.LogWarning("PlayerToken could not find a MazeBoardGenerator. Falling back to the baseline 14 x 12 left-middle entrance assumption.");
-        return new Vector3(-6.5f, tokenCenterY, -0.5f);
+        // 2. Check MazeCombinedGenerator if present
+        if (combinedBoardSource != null)
+        {
+            if (TryGetEntranceWorldPositionFromObj(combinedBoardSource, out Vector3 combPos))
+            {
+                combPos.y = spawnHeight;
+                return combPos;
+            }
+        }
+
+        // 3. Check generic grid cell method on board source
+        if (boardSource != null && TryGetEntranceCellFromMethod(boardSource, out int column, out int row))
+        {
+            Vector3 gridPosition = GridToWorld(column, row);
+            gridPosition.y = spawnHeight;
+            return gridPosition;
+        }
+
+        if (debugLogging)
+        {
+            Debug.LogWarning("PlayerToken fallback used: left-middle entrance position of 14 x 12 board centered at (0,0,0) with cell size 1.");
+        }
+        // Fallback for 14x12 board with cell size 1 centered at (0,0,0):
+        // left middle entrance cell (0, 5.5 -> row 5.5 or 6). worldX = -6.5f, worldZ = -0.5f
+        return new Vector3(-6.5f, spawnHeight, -0.5f);
     }
 
-    private bool TryGetEntranceWorldPositionFromProperty(out Vector3 position)
+    private bool TryGetEntranceWorldPositionFromObj(UnityEngine.Object source, out Vector3 position)
     {
         position = Vector3.zero;
+        if (source == null) return false;
 
-        Type boardType = boardSource.GetType();
-        PropertyInfo property = boardType.GetProperty(
-            "EntranceWorldPosition",
-            BindingFlags.Instance | BindingFlags.Public);
+        Type type = source.GetType();
 
-        if (property == null || property.PropertyType != typeof(Vector3))
+        // Property check
+        PropertyInfo property = type.GetProperty("EntranceWorldPosition", BindingFlags.Instance | BindingFlags.Public);
+        if (property != null && property.PropertyType == typeof(Vector3))
         {
-            return false;
+            position = (Vector3)property.GetValue(source);
+            return true;
         }
 
-        position = (Vector3)property.GetValue(boardSource);
-        return true;
-    }
-
-    private bool TryGetEntranceWorldPositionFromMethod(out Vector3 position)
-    {
-        position = Vector3.zero;
-
-        Type boardType = boardSource.GetType();
-        MethodInfo method = boardType.GetMethod(
-            "GetEntranceWorldPosition",
-            BindingFlags.Instance | BindingFlags.Public,
-            null,
-            Type.EmptyTypes,
-            null);
-
-        if (method == null || method.ReturnType != typeof(Vector3))
+        // Method check
+        MethodInfo method = type.GetMethod("GetEntranceWorldPosition", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
+        if (method != null && method.ReturnType == typeof(Vector3))
         {
-            return false;
+            position = (Vector3)method.Invoke(source, null);
+            return true;
         }
 
-        position = (Vector3)method.Invoke(boardSource, null);
-        return true;
+        return false;
     }
 
-    private bool TryGetEntranceCellFromMethod(out int column, out int row)
+    private bool TryGetEntranceCellFromMethod(UnityEngine.Object source, out int column, out int row)
     {
         column = 0;
         row = 0;
+        if (source == null) return false;
 
-        Type boardType = boardSource.GetType();
-        MethodInfo method = boardType.GetMethod(
-            "GetEntranceCell",
-            BindingFlags.Instance | BindingFlags.Public,
-            null,
-            Type.EmptyTypes,
-            null);
+        Type type = source.GetType();
+        MethodInfo method = type.GetMethod("GetEntranceCell", BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
+        if (method == null) return false;
 
-        if (method == null)
-        {
-            return false;
-        }
-
-        object result = method.Invoke(boardSource, null);
-
-        if (result == null)
-        {
-            return false;
-        }
+        object result = method.Invoke(source, null);
+        if (result == null) return false;
 
         Type resultType = result.GetType();
-
-        FieldInfo columnField = resultType.GetField("Column", BindingFlags.Instance | BindingFlags.Public);
+        FieldInfo colField = resultType.GetField("Column", BindingFlags.Instance | BindingFlags.Public);
         FieldInfo rowField = resultType.GetField("Row", BindingFlags.Instance | BindingFlags.Public);
 
-        if (columnField != null && rowField != null)
+        if (colField != null && rowField != null)
         {
-            column = Convert.ToInt32(columnField.GetValue(result));
+            column = Convert.ToInt32(colField.GetValue(result));
             row = Convert.ToInt32(rowField.GetValue(result));
             return true;
         }
 
-        PropertyInfo columnProperty = resultType.GetProperty("Column", BindingFlags.Instance | BindingFlags.Public);
-        PropertyInfo rowProperty = resultType.GetProperty("Row", BindingFlags.Instance | BindingFlags.Public);
+        PropertyInfo colProp = resultType.GetProperty("Column", BindingFlags.Instance | BindingFlags.Public);
+        PropertyInfo rowProp = resultType.GetProperty("Row", BindingFlags.Instance | BindingFlags.Public);
 
-        if (columnProperty != null && rowProperty != null)
+        if (colProp != null && rowProp != null)
         {
-            column = Convert.ToInt32(columnProperty.GetValue(result));
-            row = Convert.ToInt32(rowProperty.GetValue(result));
+            column = Convert.ToInt32(colProp.GetValue(result));
+            row = Convert.ToInt32(rowProp.GetValue(result));
             return true;
         }
 
@@ -338,147 +331,199 @@ public class PlayerToken : MonoBehaviour
         float worldX = (column - (sourceColumns - 1) * 0.5f) * sourceCellSize;
         float worldZ = ((sourceRows - 1) * 0.5f - row) * sourceCellSize;
 
-        return new Vector3(worldX, tokenCenterY, worldZ);
+        return new Vector3(worldX, spawnHeight, worldZ);
     }
 
-    private void ConfigureRendering(GameObject tokenObject)
+    private void ConfigurePhysics(GameObject rootObj)
     {
-        MeshRenderer renderer = tokenObject.GetComponent<MeshRenderer>();
+        rootCollider = rootObj.AddComponent<CapsuleCollider>();
+        rootCollider.radius = 0.28f * characterScale;
+        rootCollider.height = 0.85f * characterScale;
+        rootCollider.center = new Vector3(0f, 0f, 0f);
 
-        if (renderer == null)
+        PhysicsMaterial matToUse = CombinePhysicsMaterial;
+        if (matToUse == null)
         {
-            return;
+            defaultPhysicsMaterial = new PhysicsMaterial("Player Token Physics")
+            {
+                bounciness = bounciness,
+                dynamicFriction = dynamicFriction,
+                staticFriction = staticFriction,
+                frictionCombine = PhysicsMaterialCombine.Average,
+                bounceCombine = PhysicsMaterialCombine.Maximum
+            };
+            matToUse = defaultPhysicsMaterial;
         }
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        rootCollider.sharedMaterial = matToUse;
 
+        playerRigidbody = rootObj.AddComponent<Rigidbody>();
+        playerRigidbody.useGravity = false;
+        playerRigidbody.linearDamping = linearDamping;
+        playerRigidbody.angularDamping = angularDamping;
+        playerRigidbody.collisionDetectionMode = collisionDetectionMode;
+        playerRigidbody.interpolation = interpolation;
+
+        RigidbodyConstraints constraints = RigidbodyConstraints.FreezePositionY;
+        if (freezeRotation)
+        {
+            constraints |= RigidbodyConstraints.FreezeRotationX |
+                           RigidbodyConstraints.FreezeRotationY |
+                           RigidbodyConstraints.FreezeRotationZ;
+        }
+        playerRigidbody.constraints = constraints;
+        playerRigidbody.position = rootObj.transform.position;
+        playerRigidbody.linearVelocity = Vector3.zero;
+        playerRigidbody.angularVelocity = Vector3.zero;
+    }
+
+    private void BuildRobotVisuals(GameObject rootObj)
+    {
+        // Generate materials if custom ones aren't assigned
+        Material matBody = customBodyMaterial != null ? customBodyMaterial : CreateMaterial("RobotBodyMat", bodyColor, 0.4f);
+        Material matHead = customHeadMaterial != null ? customHeadMaterial : CreateMaterial("RobotHeadMat", headColor, 0.6f);
+        Material matEye = customEyeMaterial != null ? customEyeMaterial : CreateMaterial("RobotEyeMat", eyeColor, 0.9f, true);
+        Material matDetail = customDetailMaterial != null ? customDetailMaterial : CreateMaterial("RobotDetailMat", detailColor, 0.5f);
+
+        GameObject modelContainer = new GameObject("VisualModel");
+        modelContainer.transform.SetParent(rootObj.transform, false);
+        modelContainer.transform.localScale = Vector3.one * characterScale;
+
+        // 1. Capsule Body
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        body.name = "Body";
+        body.transform.SetParent(modelContainer.transform, false);
+        body.transform.localPosition = new Vector3(0f, 0f, 0f);
+        body.transform.localScale = new Vector3(0.48f, 0.35f, 0.48f);
+        SetPrimitiveProperties(body, matBody);
+
+        // 2. Directional Ring / Stripe around lower body
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "DirectionRing";
+        ring.transform.SetParent(modelContainer.transform, false);
+        ring.transform.localPosition = new Vector3(0f, -0.12f, 0f);
+        ring.transform.localScale = new Vector3(0.52f, 0.03f, 0.52f);
+        SetPrimitiveProperties(ring, matDetail);
+
+        // 3. Spherical Head
+        GameObject head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        head.name = "Head";
+        head.transform.SetParent(modelContainer.transform, false);
+        head.transform.localPosition = new Vector3(0f, 0.28f, 0f);
+        head.transform.localScale = new Vector3(0.38f, 0.34f, 0.38f);
+        SetPrimitiveProperties(head, matHead);
+
+        // 4. Eyes (Left and Right glowing objects facing forward along +Z)
+        GameObject eyeLeft = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        eyeLeft.name = "EyeLeft";
+        eyeLeft.transform.SetParent(head.transform, false);
+        eyeLeft.transform.localPosition = new Vector3(-0.28f, 0.12f, 0.72f);
+        eyeLeft.transform.localScale = new Vector3(0.24f, 0.24f, 0.24f);
+        SetPrimitiveProperties(eyeLeft, matEye);
+
+        GameObject eyeRight = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        eyeRight.name = "EyeRight";
+        eyeRight.transform.SetParent(head.transform, false);
+        eyeRight.transform.localPosition = new Vector3(0.28f, 0.12f, 0.72f);
+        eyeRight.transform.localScale = new Vector3(0.24f, 0.24f, 0.24f);
+        SetPrimitiveProperties(eyeRight, matEye);
+
+        // 5. Left & Right Arm Shapes
+        GameObject armLeft = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        armLeft.name = "ArmLeft";
+        armLeft.transform.SetParent(modelContainer.transform, false);
+        armLeft.transform.localPosition = new Vector3(-0.32f, 0.02f, 0f);
+        armLeft.transform.localRotation = Quaternion.Euler(0f, 0f, 15f);
+        armLeft.transform.localScale = new Vector3(0.12f, 0.18f, 0.12f);
+        SetPrimitiveProperties(armLeft, matDetail);
+
+        GameObject armRight = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        armRight.name = "ArmRight";
+        armRight.transform.SetParent(modelContainer.transform, false);
+        armRight.transform.localPosition = new Vector3(0.32f, 0.02f, 0f);
+        armRight.transform.localRotation = Quaternion.Euler(0f, 0f, -15f);
+        armRight.transform.localScale = new Vector3(0.12f, 0.18f, 0.12f);
+        SetPrimitiveProperties(armRight, matDetail);
+
+        // 6. Antenna / Navigation Sensor
+        GameObject antennaBase = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        antennaBase.name = "AntennaBase";
+        antennaBase.transform.SetParent(head.transform, false);
+        antennaBase.transform.localPosition = new Vector3(0f, 0.95f, -0.1f);
+        antennaBase.transform.localScale = new Vector3(0.08f, 0.3f, 0.08f);
+        SetPrimitiveProperties(antennaBase, matDetail);
+
+        GameObject antennaTip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        antennaTip.name = "AntennaTip";
+        antennaTip.transform.SetParent(antennaBase.transform, false);
+        antennaTip.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+        antennaTip.transform.localScale = new Vector3(2.2f, 0.6f, 2.2f);
+        SetPrimitiveProperties(antennaTip, matEye);
+
+        // Front indicator accent arrow/stripe
+        GameObject frontPointer = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        frontPointer.name = "FrontIndicator";
+        frontPointer.transform.SetParent(modelContainer.transform, false);
+        frontPointer.transform.localPosition = new Vector3(0f, -0.1f, 0.26f);
+        frontPointer.transform.localScale = new Vector3(0.12f, 0.04f, 0.12f);
+        SetPrimitiveProperties(frontPointer, matDetail);
+    }
+
+    private void SetPrimitiveProperties(GameObject primitiveObj, Material mat)
+    {
+        // Strip colliders from child primitives so only the root CapsuleCollider handles physics
+        Collider c = primitiveObj.GetComponent<Collider>();
+        if (c != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(c);
+            }
+            else
+            {
+                DestroyImmediate(c);
+            }
+        }
+
+        MeshRenderer mr = primitiveObj.GetComponent<MeshRenderer>();
+        if (mr != null)
+        {
+            mr.sharedMaterial = mat;
+        }
+    }
+
+    private Material CreateMaterial(string matName, Color color, float smoothness, bool isEmissive = false)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
         {
             shader = Shader.Find("Standard");
         }
 
-        tokenMaterial = new Material(shader);
-        tokenMaterial.name = "Player Token Material";
-        tokenMaterial.color = tokenBaseColor;
+        Material mat = new Material(shader);
+        mat.name = matName;
+        mat.color = color;
 
         if (shader != null && shader.name.Contains("Universal Render Pipeline"))
         {
-            tokenMaterial.SetFloat("_Smoothness", smoothness);
+            mat.SetFloat("_Smoothness", smoothness);
+            if (isEmissive)
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", color * 1.5f);
+            }
         }
         else
         {
-            tokenMaterial.SetFloat("_Glossiness", smoothness);
-        }
-
-        Texture2D finalTexture = tokenTexture;
-        if (finalTexture == null && generateFallbackCircleTexture)
-        {
-            finalTexture = GenerateCirclePatternTexture();
-        }
-
-        if (finalTexture != null)
-        {
-            tokenMaterial.mainTexture = finalTexture;
-        }
-
-        renderer.sharedMaterial = tokenMaterial;
-    }
-
-    private Texture2D GenerateCirclePatternTexture()
-    {
-        int size = Mathf.Max(32, generatedTextureSize);
-        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
-        texture.name = "Generated Player Token Circle Texture";
-        texture.wrapMode = TextureWrapMode.Repeat;
-        texture.filterMode = FilterMode.Bilinear;
-
-        Vector2 center = new Vector2(0.5f, 0.5f);
-        Vector2 offsetA = new Vector2(0.28f, 0.5f);
-        Vector2 offsetB = new Vector2(0.72f, 0.5f);
-        Vector2 offsetC = new Vector2(0.5f, 0.28f);
-        Vector2 offsetD = new Vector2(0.5f, 0.72f);
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
+            mat.SetFloat("_Glossiness", smoothness);
+            if (isEmissive)
             {
-                Vector2 uv = new Vector2(
-                    (x + 0.5f) / size,
-                    (y + 0.5f) / size);
-
-                float line = 0f;
-                line = Mathf.Max(line, CircleLineMask(uv, center, circleRadius));
-                line = Mathf.Max(line, CircleLineMask(uv, offsetA, circleRadius));
-                line = Mathf.Max(line, CircleLineMask(uv, offsetB, circleRadius));
-                line = Mathf.Max(line, CircleLineMask(uv, offsetC, circleRadius));
-                line = Mathf.Max(line, CircleLineMask(uv, offsetD, circleRadius));
-                line = Mathf.Max(line, CircleLineMask(uv, center, circleRadius * 0.62f));
-
-                Color color = Color.Lerp(tokenBaseColor, circlePatternColor, line);
-                texture.SetPixel(x, y, color);
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", color * 1.5f);
             }
         }
 
-        texture.Apply(true, false);
-        return texture;
-    }
-
-    private float CircleLineMask(Vector2 uv, Vector2 center, float radius)
-    {
-        float distance = Vector2.Distance(uv, center);
-        float lineDistance = Mathf.Abs(distance - radius);
-        float halfWidth = Mathf.Max(0.001f, circleLineWidth);
-        return 1f - Mathf.SmoothStep(halfWidth * 0.5f, halfWidth, lineDistance);
-    }
-
-    private void ConfigurePhysics(GameObject tokenObject)
-    {
-        tokenCollider = tokenObject.GetComponent<SphereCollider>();
-        if (tokenCollider == null)
-        {
-            tokenCollider = tokenObject.AddComponent<SphereCollider>();
-        }
-
-        tokenCollider.radius = 0.5f;
-
-        tokenPhysicsMaterial = new PhysicsMaterial("Player Token Physics")
-        {
-            bounciness = bounciness,
-            dynamicFriction = dynamicFriction,
-            staticFriction = staticFriction,
-            frictionCombine = frictionCombine,
-            bounceCombine = bounceCombine
-        };
-
-        tokenCollider.sharedMaterial = tokenPhysicsMaterial;
-
-        tokenRigidbody = tokenObject.GetComponent<Rigidbody>();
-        if (tokenRigidbody == null)
-        {
-            tokenRigidbody = tokenObject.AddComponent<Rigidbody>();
-        }
-
-        tokenRigidbody.useGravity = false;
-        tokenRigidbody.linearDamping = linearDamping;
-        tokenRigidbody.angularDamping = angularDamping;
-        tokenRigidbody.collisionDetectionMode = collisionDetectionMode;
-        tokenRigidbody.interpolation = interpolation;
-        tokenRigidbody.constraints = RigidbodyConstraints.FreezePositionY;
-
-        if (freezeRotation)
-        {
-            tokenRigidbody.constraints |= RigidbodyConstraints.FreezeRotationX |
-                                          RigidbodyConstraints.FreezeRotationY |
-                                          RigidbodyConstraints.FreezeRotationZ;
-        }
-
-        tokenRigidbody.position = new Vector3(
-            tokenObject.transform.position.x,
-            tokenCenterY,
-            tokenObject.transform.position.z);
-
-        tokenRigidbody.linearVelocity = Vector3.zero;
-        tokenRigidbody.angularVelocity = Vector3.zero;
+        return mat;
     }
 
     private Vector3 ReadArrowKeyInput()
@@ -521,7 +566,7 @@ public class PlayerToken : MonoBehaviour
         if (movementMode == MovementMode.SetVelocity)
         {
             Vector3 targetVelocity = direction * movementSpeed;
-            tokenRigidbody.linearVelocity = new Vector3(
+            playerRigidbody.linearVelocity = new Vector3(
                 targetVelocity.x,
                 0f,
                 targetVelocity.z);
@@ -529,9 +574,9 @@ public class PlayerToken : MonoBehaviour
         }
 
         Vector3 currentHorizontalVelocity = new Vector3(
-            tokenRigidbody.linearVelocity.x,
+            playerRigidbody.linearVelocity.x,
             0f,
-            tokenRigidbody.linearVelocity.z);
+            playerRigidbody.linearVelocity.z);
 
         Vector3 desiredVelocity = direction * movementSpeed;
         Vector3 velocityDelta = desiredVelocity - currentHorizontalVelocity;
@@ -539,32 +584,55 @@ public class PlayerToken : MonoBehaviour
             velocityDelta,
             acceleration * Time.fixedDeltaTime);
 
-        tokenRigidbody.linearVelocity = new Vector3(
+        playerRigidbody.linearVelocity = new Vector3(
             currentHorizontalVelocity.x + accelerationStep.x,
             0f,
             currentHorizontalVelocity.z + accelerationStep.z);
     }
 
+    private void ApplyRotation(Vector3 direction)
+    {
+        if (direction.sqrMagnitude > 0.01f)
+        {
+            targetRotation = Quaternion.LookRotation(direction, Vector3.up);
+        }
+
+        if (rotationSpeed > 0f)
+        {
+            playerTransform.rotation = Quaternion.Slerp(
+                playerTransform.rotation,
+                targetRotation,
+                rotationSpeed * Time.fixedDeltaTime);
+        }
+        else
+        {
+            playerTransform.rotation = targetRotation;
+        }
+    }
+
     private void ApplyNoInputMovement()
     {
-        tokenRigidbody.linearVelocity = new Vector3(0f, 0f, 0f);
+        if (playerRigidbody != null)
+        {
+            playerRigidbody.linearVelocity = Vector3.zero;
+        }
     }
 
     private void KeepTokenOnMovementPlane()
     {
-        Vector3 position = tokenRigidbody.position;
+        Vector3 position = playerRigidbody.position;
 
-        if (!Mathf.Approximately(position.y, tokenCenterY))
+        if (!Mathf.Approximately(position.y, spawnHeight))
         {
-            position.y = tokenCenterY;
-            tokenRigidbody.position = position;
+            position.y = spawnHeight;
+            playerRigidbody.position = position;
             playerTransform.position = position;
         }
 
-        Vector3 velocity = tokenRigidbody.linearVelocity;
+        Vector3 velocity = playerRigidbody.linearVelocity;
         if (!Mathf.Approximately(velocity.y, 0f))
         {
-            tokenRigidbody.linearVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            playerRigidbody.linearVelocity = new Vector3(velocity.x, 0f, velocity.z);
         }
     }
 }
