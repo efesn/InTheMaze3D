@@ -815,11 +815,22 @@ public class MainMenuManager : MonoBehaviour
         string bestTimeText = "Best Time: --:--.--";
         string newBestText = "";
 
+        string bestTimeKey = "InTheMaze_BestCompletionTime";
+        float bestTimeVal = PlayerPrefs.GetFloat(bestTimeKey, -1f);
+
         if (bestTimeManager != null && bestTimeManager.HasBestTime)
         {
-            bestTimeText = "Best Time: " + FormatTime(bestTimeManager.BestTimeSeconds);
-
+            bestTimeVal = bestTimeManager.BestTimeSeconds;
             if (bestTimeManager.IsNewBestTime)
+            {
+                newBestText = "\nNew Best Time!";
+            }
+        }
+
+        if (bestTimeVal > 0f)
+        {
+            bestTimeText = "Best Time: " + FormatTime(bestTimeVal);
+            if (Mathf.Approximately(completionTime, bestTimeVal) || completionTime <= bestTimeVal)
             {
                 newBestText = "\nNew Best Time!";
             }

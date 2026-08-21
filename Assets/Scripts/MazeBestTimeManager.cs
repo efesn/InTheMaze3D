@@ -47,6 +47,7 @@ public class MazeBestTimeManager : MonoBehaviour
     [SerializeField, HideInInspector] private bool isNewBestTime = false;
 
     private MazeGameSystem.MazeGameState lastGameState;
+    private bool hasSubmittedThisRun;
     private GUIStyle onGuiStyle;
 
     public string Status => status;
@@ -238,6 +239,8 @@ public class MazeBestTimeManager : MonoBehaviour
             return false;
         }
 
+        LoadBestTime();
+
         if (!hasBestTime || completionTimeSeconds < bestTimeSeconds)
         {
             SaveBestTime(completionTimeSeconds);
@@ -258,6 +261,12 @@ public class MazeBestTimeManager : MonoBehaviour
         return false;
     }
 
+    private void OnEnable()
+    {
+        ResolveReferences();
+        LoadBestTime();
+    }
+
     private void ObserveGameState()
     {
         if (gameSystem == null)
@@ -267,27 +276,34 @@ public class MazeBestTimeManager : MonoBehaviour
 
         MazeGameSystem.MazeGameState currentState = gameSystem.CurrentState;
 
-        if (currentState == lastGameState)
+        if (currentState == MazeGameSystem.MazeGameState.Finished && !hasSubmittedThisRun)
         {
-            return;
+            float completionTime = gameSystem.FinalCompletionTime;
+            if (completionTime > 0f)
+            {
+                hasSubmittedThisRun = true;
+                TrySubmitCompletionTime(completionTime);
+            }
+        }
+        else if (currentState != MazeGameSystem.MazeGameState.Finished)
+        {
+            hasSubmittedThisRun = false;
         }
 
-        if (clearMessageOnRestart &&
-            (currentState == MazeGameSystem.MazeGameState.Restarting ||
-             currentState == MazeGameSystem.MazeGameState.WaitingForMaze ||
-             currentState == MazeGameSystem.MazeGameState.ReadyToStart ||
-             currentState == MazeGameSystem.MazeGameState.Playing))
+        if (currentState != lastGameState)
         {
-            isNewBestTime = false;
-            UpdateMessageDisplay("");
-        }
+            if (clearMessageOnRestart &&
+                (currentState == MazeGameSystem.MazeGameState.Restarting ||
+                 currentState == MazeGameSystem.MazeGameState.WaitingForMaze ||
+                 currentState == MazeGameSystem.MazeGameState.ReadyToStart ||
+                 currentState == MazeGameSystem.MazeGameState.Playing))
+            {
+                isNewBestTime = false;
+                UpdateMessageDisplay("");
+            }
 
-        if (currentState == MazeGameSystem.MazeGameState.Finished)
-        {
-            TrySubmitCompletionTime(gameSystem.FinalCompletionTime);
+            lastGameState = currentState;
         }
-
-        lastGameState = currentState;
     }
 
     private void ResolveReferences()

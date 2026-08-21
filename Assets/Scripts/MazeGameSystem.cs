@@ -378,6 +378,20 @@ public class MazeGameSystem : MonoBehaviour
 
         finalCompletionTime = elapsedTime;
         SetState(MazeGameState.Finished);
+
+        // Guaranteed Best Time Persistence
+        if (finalCompletionTime > 0f)
+        {
+            string bestKey = "InTheMaze_BestCompletionTime";
+            float previousBest = PlayerPrefs.GetFloat(bestKey, -1f);
+            if (previousBest <= 0f || finalCompletionTime < previousBest)
+            {
+                PlayerPrefs.SetFloat(bestKey, finalCompletionTime);
+                PlayerPrefs.Save();
+                Debug.Log($"[MazeGameSystem] New Best Time Saved to PlayerPrefs: {finalCompletionTime:F2}s");
+            }
+        }
+
         currentMessage = finishMessagePrefix + FormatTime(finalCompletionTime);
 
         if (!allowMovementAfterFinish)
